@@ -24,33 +24,38 @@ ROS2 Build Tool automates the complete setup of robot workspaces including:
 
 - **Modular Architecture**: 6 focused packages with clear separation of concerns
 - **Pydantic Data Models**: Comprehensive validation with helpful error messages
-- **Jinja2 Template System**: Validated code generation with syntax checking (NEW)
-- **Xacro Support**: Automatic processing with temporary file cleanup (IMPROVED)
-- **Enhanced URDF Parsing**: Proper 3D transforms with rotation matrices (FIXED)
+- **Jinja2 Template System**: Validated code generation with syntax checking
+- **Complete Orchestration Pipeline**: End-to-end workspace creation (NEW)
+- **Repository Management**: GitHub cloning with retry logic and vcs integration (NEW)
+- **Build Management**: colcon build wrapper with progress tracking (NEW)
+- **Dependency Management**: rosdep with retry logic for reliable installs (NEW)
+- **Xacro Support**: Automatic processing with temporary file cleanup
+- **Enhanced URDF Parsing**: Proper 3D transforms with rotation matrices
 - **ros2_control Integration**: Full hardware interface support with plugin detection
 - **Lifecycle Node Management**: Sequential startup with OnStateTransition events
-- **Self-Healing Watchdog**: Dynamic topic introspection + lifecycle recovery (WORKING)
+- **Self-Healing Watchdog**: Dynamic topic introspection + lifecycle recovery
 - **TF Validation**: tf2_ros Buffer API with proper validation
 - **QoS Validation**: Publisher/subscriber compatibility checking
 - **Dynamic Nav2 Parameters**: Adaptive calculations based on robot specs
 - **Diagnostic Aggregator**: Hierarchical health monitoring
 - **Hardware Interface Discovery**: Runtime package and executable discovery
+- **Composable Nodes**: Container support for performance optimization (NEW)
+- **Foxglove Integration**: Web-based visualization and control (NEW)
 - **Interactive Wizard**: questionary-based configuration with validation
-- **Safe Platform Operations**: Permission checks, confirmation prompts, rollback (NEW)
+- **Safe Platform Operations**: Permission checks, confirmation prompts, rollback
+- **AST-based setup.py Parsing**: Robust entry point detection (IMPROVED)
 
 ### ⚠️ Partially Implemented
 
-- **Resource Cleanup**: Temporary files cleaned up, cache expiration pending
-- **Error Messages**: Improved with recovery suggestions, more work needed
-- **Type Hints**: Most functions annotated, some missing return types
+- **Integration Tests**: Framework ready, comprehensive tests pending
+- **Dry-run Mode**: Implemented for preview, needs more coverage
+- **Wizard UX**: No back button or preview yet
 
 ### 📋 Known Limitations
 
-- **Recovery system** works for lifecycle nodes only; regular nodes require `respawn=True`
-- **Integration tests** not yet implemented (unit tests only)
-- **Bounds checking** for Nav2 parameters partially implemented
-- **Wizard UX** no back button or preview yet
-- **Dry-run mode** not yet implemented
+- **Windows Support**: Primary development on Linux, Windows testing in progress
+- **Recovery system**: Works for lifecycle nodes only; regular nodes require `respawn=True`
+- **Bounds checking**: For Nav2 parameters partially implemented
 
 ## Quick Start
 

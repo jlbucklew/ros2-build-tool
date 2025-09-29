@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="ros2_build_tool_validation",
-    version="0.2.0",
+    version="0.3.0-alpha",
     author="ROS2 Build Tool Contributors",
     description="TF validation, QoS checks, and diagnostic aggregation",
     url="https://github.com/jlbucklew/ros2-build-tool",

@@ -15,8 +15,11 @@ from launch.actions import (
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
-from launch_ros.actions import Node{% if use_lifecycle %}, LifecycleNode{% endif %}
+from launch_ros.actions import Node{% if use_lifecycle %}, LifecycleNode{% endif %}{% if use_composable %}, ComposableNodeContainer, LoadComposableNodes{% endif %}
 from launch_ros.substitutions import FindPackageShare
+{% if use_composable %}
+from launch_ros.descriptions import ComposableNode
+{% endif %}
 {% if use_lifecycle %}
 from launch_ros.event_handlers import OnStateTransition
 from launch_ros.events.lifecycle import ChangeState
@@ -201,6 +204,25 @@ def generate_launch_description():
     )
 {% endif %}
 
+{% if use_composable %}
+    # Composable node container for performance optimization
+    composable_container = ComposableNodeContainer(
+        name='sensor_container',
+        namespace='',
+        package='rclcpp_components',
+        executable='component_container',
+        composable_node_descriptions=[
+            # Add sensor components here dynamically
+            # ComposableNode(
+            #     package='package_name',
+            #     plugin='plugin_class',
+            #     name='node_name',
+            # ),
+        ],
+        output='screen',
+    )
+{% endif %}
+
     # Build launch description
     ld = LaunchDescription([
         # Arguments
@@ -233,6 +255,9 @@ def generate_launch_description():
 {% endif %}
 {% if profile.self_healing %}
         watchdog_node,
+{% endif %}
+{% if use_composable %}
+        composable_container,
 {% endif %}
     ])
 

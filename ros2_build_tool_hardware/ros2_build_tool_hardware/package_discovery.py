@@ -121,45 +121,69 @@ class PackageDiscovery:
             return []
 
     def parse_setup_py_entry_points(self, package_path: Path) -> Dict[str, str]:
-        """Parse setup.py to find entry points (primary executables)"""
+        """Parse setup.py to find entry points (primary executables) using AST"""
         setup_py = package_path / 'setup.py'
 
         if not setup_py.exists():
             return {}
 
         try:
-            # Simple regex-based parsing (not executing setup.py for security)
-            import re
+            import ast
 
-            with open(setup_py, 'r') as f:
+            with open(setup_py, 'r', encoding='utf-8') as f:
                 content = f.read()
 
-            # Look for entry_points with console_scripts
-            entry_points_match = re.search(
-                r"entry_points\s*=\s*\{[^}]*'console_scripts'\s*:\s*\[(.*?)\]",
-                content,
-                re.DOTALL
-            )
+            # Parse Python code with AST
+            tree = ast.parse(content, filename=str(setup_py))
 
-            if not entry_points_match:
-                return {}
-
-            scripts_str = entry_points_match.group(1)
             scripts = {}
 
-            # Parse each entry: 'name = package.module:function'
-            for line in scripts_str.split(','):
-                line = line.strip().strip("'\"")
-                if '=' in line:
-                    name, target = line.split('=', 1)
-                    scripts[name.strip()] = target.strip()
+            # Find setup() call
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call):
+                    # Check if this is a call to setup()
+                    if isinstance(node.func, ast.Name) and node.func.id == 'setup':
+                        # Look for entry_points keyword argument
+                        for keyword in node.keywords:
+                            if keyword.arg == 'entry_points':
+                                scripts.update(self._parse_entry_points_ast(keyword.value))
 
             self.logger.info(f"Found {len(scripts)} entry points in setup.py")
             return scripts
 
+        except SyntaxError as e:
+            self.logger.warning(f"Syntax error parsing setup.py: {e}")
+            return {}
         except Exception as e:
             self.logger.warning(f"Failed to parse setup.py: {e}")
             return {}
+
+    def _parse_entry_points_ast(self, node) -> Dict[str, str]:
+        """Parse entry_points AST node to extract console_scripts"""
+        import ast
+
+        scripts = {}
+
+        try:
+            # entry_points is typically a dict
+            if isinstance(node, ast.Dict):
+                for key, value in zip(node.keys, node.values):
+                    # Look for 'console_scripts' key
+                    if isinstance(key, ast.Constant) and key.value == 'console_scripts':
+                        # Value should be a list of script entries
+                        if isinstance(value, ast.List):
+                            for elt in value.elts:
+                                if isinstance(elt, ast.Constant):
+                                    # Parse 'name = package.module:function'
+                                    entry = elt.value
+                                    if '=' in entry:
+                                        name, target = entry.split('=', 1)
+                                        scripts[name.strip()] = target.strip()
+
+        except Exception as e:
+            self.logger.debug(f"Error parsing entry_points AST: {e}")
+
+        return scripts
 
     def get_package_metadata(self, package_name: str) -> Optional[Dict]:
         """Get package metadata from package.xml"""

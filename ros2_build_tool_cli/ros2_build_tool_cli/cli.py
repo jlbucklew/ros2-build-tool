@@ -155,6 +155,18 @@ Examples:
         help='Overwrite existing workspace'
     )
 
+    parser.add_argument(
+        '--skip-build',
+        action='store_true',
+        help='Skip colcon build phase (only generate structure and configs)'
+    )
+
+    parser.add_argument(
+        '--skip-clone',
+        action='store_true',
+        help='Skip repository cloning (use existing repos in workspace)'
+    )
+
     args = parser.parse_args()
 
     # Setup logging
@@ -283,10 +295,65 @@ def generate_workspace(profile: RobotProfile, args: argparse.Namespace, dry_run:
 
         logging.info("\nDry run completed. See summary above for details.")
     else:
-        # TODO: Actually generate workspace here
-        # This would call the main orchestrator
+        # Actually generate workspace using orchestrator
         logging.info(f"Generating workspace at: {workspace_path}")
-        logging.info("(Actual generation not yet implemented in this CLI)")
+
+        from ros2_build_tool_core.orchestrator import WorkspaceOrchestrator
+        from ros2_build_tool_hardware.hardware_registry import HardwareRegistry
+        from pathlib import Path as PathLib
+
+        # Initialize hardware registry
+        data_dir = PathLib.home() / '.ros2_build_tool'
+        data_dir.mkdir(exist_ok=True)
+        hardware_registry = HardwareRegistry(data_dir, logging.getLogger('hardware_registry'))
+
+        # Create orchestrator
+        orchestrator = WorkspaceOrchestrator(logging.getLogger('orchestrator'))
+
+        # Set up progress callback
+        def progress_callback(message: str, percentage: int):
+            logging.info(f"[{percentage}%] {message}")
+
+        orchestrator.set_progress_callback(progress_callback)
+
+        # Determine build options
+        skip_build = getattr(args, 'skip_build', False)
+        skip_clone = getattr(args, 'skip_clone', False)
+
+        # Create workspace
+        result = orchestrator.create_workspace(
+            profile=profile,
+            workspace_path=workspace_path,
+            hardware_registry=hardware_registry,
+            skip_build=skip_build,
+            skip_clone=skip_clone
+        )
+
+        # Report results
+        if result.success:
+            logging.info("\n✓ Workspace created successfully!")
+            logging.info(f"  Location: {result.workspace_path}")
+            logging.info(f"  Packages: {len(result.created_packages)}")
+            if result.cloned_repos:
+                logging.info(f"  Cloned repos: {len(result.cloned_repos)}")
+
+            if result.warnings:
+                logging.warning("\nWarnings:")
+                for warning in result.warnings:
+                    logging.warning(f"  - {warning}")
+
+        else:
+            logging.error("\n✗ Workspace creation failed!")
+            for error in result.errors:
+                logging.error(f"  - {error}")
+
+            # Offer rollback
+            if workspace_path.exists():
+                response = input(f"\nRollback workspace at {workspace_path}? [y/N]: ")
+                if response.lower() == 'y':
+                    orchestrator.rollback(workspace_path)
+
+            sys.exit(1)
 
 
 if __name__ == '__main__':

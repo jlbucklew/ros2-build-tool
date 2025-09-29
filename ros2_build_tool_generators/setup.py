@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="ros2_build_tool_generators",
-    version="0.2.0",
+    version="0.3.0-alpha",
     author="ROS2 Build Tool Contributors",
     description="Launch file, configuration, and parameter generation with lifecycle support",
     url="https://github.com/jlbucklew/ros2-build-tool",

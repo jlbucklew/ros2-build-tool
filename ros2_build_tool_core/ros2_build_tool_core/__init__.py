@@ -1,6 +1,6 @@
 """
 ROS2 Build Tool Core
-Core data models, platform detection, and environment management
+Core data models, platform detection, environment management, and workspace orchestration
 """
 
 from .models import (
@@ -16,6 +16,10 @@ from .models import (
 from .platform import Platform
 from .environment import Environment
 from .executor import Executor
+from .orchestrator import WorkspaceOrchestrator, OrchestrationResult
+from .repo_manager import RepositoryManager
+from .build_manager import BuildManager
+from .dependency_manager import DependencyManager
 
 __all__ = [
     'UseCase',
@@ -28,5 +32,10 @@ __all__ = [
     'DependencyManifest',
     'Platform',
     'Environment',
-    'Executor'
+    'Executor',
+    'WorkspaceOrchestrator',
+    'OrchestrationResult',
+    'RepositoryManager',
+    'BuildManager',
+    'DependencyManager'
 ]
