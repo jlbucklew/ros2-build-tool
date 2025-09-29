@@ -1,15 +1,22 @@
 """
-Lifecycle-aware launch file generation with self-healing patterns
+Lifecycle-aware launch file generation with self-healing patterns using Jinja2 templates
 """
 
+import ast
 import logging
 from pathlib import Path
 from typing import List, Dict, Optional
 from ros2_build_tool_core.models import RobotProfile, HardwareComponent
 
+try:
+    from jinja2 import Environment, FileSystemLoader, TemplateNotFound
+    JINJA2_AVAILABLE = True
+except ImportError:
+    JINJA2_AVAILABLE = False
+
 
 class LifecycleAwareLaunchGenerator:
-    """Generate launch files with lifecycle node management and self-healing"""
+    """Generate launch files with lifecycle node management and self-healing using Jinja2 templates"""
 
     def __init__(self, package_path: Path, logger: logging.Logger):
         self.package_path = package_path
@@ -17,15 +24,97 @@ class LifecycleAwareLaunchGenerator:
         self.launch_dir.mkdir(exist_ok=True)
         self.logger = logger
 
+        # Setup Jinja2 environment
+        if JINJA2_AVAILABLE:
+            template_dir = Path(__file__).parent / 'templates'
+            if not template_dir.exists():
+                self.logger.warning(
+                    f'Template directory not found: {template_dir}. '
+                    f'Will fall back to string-based generation.'
+                )
+                self.jinja_env = None
+            else:
+                self.jinja_env = Environment(
+                    loader=FileSystemLoader(str(template_dir)),
+                    trim_blocks=True,
+                    lstrip_blocks=True,
+                    keep_trailing_newline=True
+                )
+                self.logger.info(f'Using Jinja2 templates from: {template_dir}')
+        else:
+            self.logger.warning(
+                'Jinja2 not available. Install with: pip install jinja2. '
+                'Falling back to string-based generation.'
+            )
+            self.jinja_env = None
+
+    def _validate_generated_python(self, content: str, filename: str) -> bool:
+        """Validate generated Python code syntax"""
+        try:
+            ast.parse(content)
+            self.logger.debug(f'Validated syntax for {filename}')
+            return True
+        except SyntaxError as e:
+            self.logger.error(
+                f'Generated Python file {filename} has syntax errors:\n'
+                f'  Line {e.lineno}: {e.msg}\n'
+                f'  {e.text}'
+            )
+            return False
+
     def generate_main_launch(
         self,
         profile: RobotProfile,
         hardware_components: List[HardwareComponent]
     ) -> Path:
-        """Generate main launch file with lifecycle orchestration"""
+        """Generate main launch file with lifecycle orchestration using Jinja2 templates"""
 
         use_lifecycle = profile.lifecycle_management
         use_composable = profile.composable_nodes
+
+        # Try Jinja2 first, fall back to string generation if unavailable
+        if self.jinja_env:
+            try:
+                template = self.jinja_env.get_template('robot.launch.py.j2')
+                launch_content = template.render(
+                    profile=profile,
+                    use_lifecycle=use_lifecycle,
+                    use_composable=use_composable,
+                    hardware_components=hardware_components
+                )
+
+                # Validate generated Python syntax
+                if not self._validate_generated_python(launch_content, 'robot.launch.py'):
+                    self.logger.error('Generated launch file has syntax errors. Aborting.')
+                    raise RuntimeError('Launch file generation failed validation')
+
+            except TemplateNotFound as e:
+                self.logger.warning(f'Template not found: {e}. Falling back to string generation.')
+                launch_content = self._generate_main_launch_fallback(profile, hardware_components)
+            except Exception as e:
+                self.logger.error(f'Template rendering failed: {e}. Falling back to string generation.')
+                launch_content = self._generate_main_launch_fallback(profile, hardware_components)
+        else:
+            launch_content = self._generate_main_launch_fallback(profile, hardware_components)
+
+        # Write launch file
+        launch_file = self.launch_dir / 'robot.launch.py'
+        with open(launch_file, 'w') as f:
+            f.write(launch_content)
+
+        launch_file.chmod(0o755)  # Make executable
+        self.logger.info(f"Generated main launch file: {launch_file}")
+
+        return launch_file
+
+    def _generate_main_launch_fallback(
+        self,
+        profile: RobotProfile,
+        hardware_components: List[HardwareComponent]
+    ) -> str:
+        """Fallback string-based launch generation (original method)"""
+
+        use_lifecycle = profile.lifecycle_management
 
         launch_content = f'''#!/usr/bin/env python3
 """
@@ -283,22 +372,57 @@ def generate_launch_description():
     return ld
 '''
 
-        # Write launch file
-        launch_file = self.launch_dir / 'robot.launch.py'
-        with open(launch_file, 'w') as f:
-            f.write(launch_content)
-
-        launch_file.chmod(0o755)  # Make executable
-        self.logger.info(f"Generated main launch file: {launch_file}")
-
-        return launch_file
+        return launch_content
 
     def generate_sensors_launch(
         self,
         profile: RobotProfile,
         hardware_components: List[HardwareComponent]
     ) -> Path:
-        """Generate sensors launch file with hardware drivers"""
+        """Generate sensors launch file with hardware drivers using Jinja2 templates"""
+
+        use_lifecycle = profile.lifecycle_management
+
+        # Try Jinja2 first, fall back to string generation if unavailable
+        if self.jinja_env:
+            try:
+                template = self.jinja_env.get_template('sensors.launch.py.j2')
+                launch_content = template.render(
+                    profile=profile,
+                    use_lifecycle=use_lifecycle,
+                    hardware_components=hardware_components
+                )
+
+                # Validate generated Python syntax
+                if not self._validate_generated_python(launch_content, 'sensors.launch.py'):
+                    self.logger.error('Generated sensors launch file has syntax errors. Aborting.')
+                    raise RuntimeError('Sensors launch file generation failed validation')
+
+            except TemplateNotFound as e:
+                self.logger.warning(f'Template not found: {e}. Falling back to string generation.')
+                launch_content = self._generate_sensors_launch_fallback(profile, hardware_components)
+            except Exception as e:
+                self.logger.error(f'Template rendering failed: {e}. Falling back to string generation.')
+                launch_content = self._generate_sensors_launch_fallback(profile, hardware_components)
+        else:
+            launch_content = self._generate_sensors_launch_fallback(profile, hardware_components)
+
+        # Write launch file
+        launch_file = self.launch_dir / 'sensors.launch.py'
+        with open(launch_file, 'w') as f:
+            f.write(launch_content)
+
+        launch_file.chmod(0o755)
+        self.logger.info(f"Generated sensors launch file: {launch_file}")
+
+        return launch_file
+
+    def _generate_sensors_launch_fallback(
+        self,
+        profile: RobotProfile,
+        hardware_components: List[HardwareComponent]
+    ) -> str:
+        """Fallback string-based sensors launch generation (original method)"""
 
         use_lifecycle = profile.lifecycle_management
 
@@ -351,11 +475,4 @@ def generate_launch_description():
         launch_content += '''    return LaunchDescription(nodes)
 '''
 
-        launch_file = self.launch_dir / 'sensors.launch.py'
-        with open(launch_file, 'w') as f:
-            f.write(launch_content)
-
-        launch_file.chmod(0o755)
-        self.logger.info(f"Generated sensors launch file: {launch_file}")
-
-        return launch_file
+        return launch_content

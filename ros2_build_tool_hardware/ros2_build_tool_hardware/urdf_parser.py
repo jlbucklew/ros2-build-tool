@@ -1,5 +1,5 @@
 """
-Enhanced URDF parsing with xacro support and ros2_control generation
+Enhanced URDF parsing with xacro support, proper 3D transforms, and ros2_control generation
 """
 
 import logging
@@ -7,6 +7,9 @@ import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import List, Tuple, Optional, Dict
+import math
+import numpy as np
+import tempfile
 
 try:
     from urdf_parser_py.urdf import URDF
@@ -18,12 +21,81 @@ from ros2_build_tool_core.models import RobotSpecs, SensorFrame
 
 
 class URDFParser:
-    """Enhanced URDF parsing with xacro support and transform validation"""
+    """Enhanced URDF parsing with xacro support, proper 3D transforms, and validation"""
 
     def __init__(self, logger: logging.Logger):
         self.logger = logger
         self.robot = None
         self.urdf_tree = None  # ET tree for ros2_control extraction
+        self.temp_files: List[Path] = []  # Track temporary files for cleanup
+
+    def __del__(self):
+        """Cleanup temporary files when object is destroyed"""
+        self.cleanup()
+
+    def cleanup(self) -> None:
+        """Remove all temporary files created during parsing"""
+        for temp_file in self.temp_files:
+            try:
+                if temp_file.exists():
+                    temp_file.unlink()
+                    self.logger.debug(f'Cleaned up temporary file: {temp_file}')
+            except Exception as e:
+                self.logger.warning(f'Failed to cleanup temporary file {temp_file}: {e}')
+        self.temp_files.clear()
+
+    @staticmethod
+    def rpy_to_rotation_matrix(roll: float, pitch: float, yaw: float) -> np.ndarray:
+        """
+        Convert roll-pitch-yaw angles to 3x3 rotation matrix
+        Uses ZYX euler angle convention (yaw-pitch-roll) as per URDF/ROS standards
+
+        Args:
+            roll: Rotation around X-axis (radians)
+            pitch: Rotation around Y-axis (radians)
+            yaw: Rotation around Z-axis (radians)
+
+        Returns:
+            3x3 rotation matrix as numpy array
+        """
+        # Rotation around X-axis (roll)
+        Rx = np.array([
+            [1, 0, 0],
+            [0, math.cos(roll), -math.sin(roll)],
+            [0, math.sin(roll), math.cos(roll)]
+        ])
+
+        # Rotation around Y-axis (pitch)
+        Ry = np.array([
+            [math.cos(pitch), 0, math.sin(pitch)],
+            [0, 1, 0],
+            [-math.sin(pitch), 0, math.cos(pitch)]
+        ])
+
+        # Rotation around Z-axis (yaw)
+        Rz = np.array([
+            [math.cos(yaw), -math.sin(yaw), 0],
+            [math.sin(yaw), math.cos(yaw), 0],
+            [0, 0, 1]
+        ])
+
+        # Combined rotation: R = Rz * Ry * Rx (ZYX convention)
+        return Rz @ Ry @ Rx
+
+    @staticmethod
+    def transform_point(point: np.ndarray, rotation: np.ndarray, translation: np.ndarray) -> np.ndarray:
+        """
+        Apply 3D transformation (rotation + translation) to a point
+
+        Args:
+            point: 3D point as numpy array [x, y, z]
+            rotation: 3x3 rotation matrix
+            translation: 3D translation vector [x, y, z]
+
+        Returns:
+            Transformed 3D point
+        """
+        return rotation @ point + translation
 
     def parse(self, urdf_path: Path, xacro_args: Optional[Dict[str, str]] = None) -> Tuple[RobotSpecs, List[SensorFrame], List[str]]:
         """
@@ -70,8 +142,11 @@ class URDFParser:
         return robot_specs, sensor_frames, warnings
 
     def _process_xacro(self, xacro_path: Path, xacro_args: Optional[Dict[str, str]] = None) -> Path:
-        """Process xacro file to generate URDF"""
-        output_path = xacro_path.with_suffix('.urdf.generated')
+        """Process xacro file to generate URDF (creates temporary file)"""
+        # Create a temporary file that will be cleaned up
+        temp_fd, temp_path = tempfile.mkstemp(suffix='.urdf', prefix='ros2_build_tool_')
+        output_path = Path(temp_path)
+        self.temp_files.append(output_path)  # Track for cleanup
 
         cmd = ['xacro', str(xacro_path)]
 
@@ -85,7 +160,8 @@ class URDFParser:
                 cmd,
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
+                timeout=30  # Add timeout to prevent hanging
             )
 
             with open(output_path, 'w') as f:
@@ -94,10 +170,21 @@ class URDFParser:
             self.logger.info(f"Generated URDF from xacro: {output_path}")
             return output_path
 
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(
+                f"xacro processing timed out after 30 seconds. "
+                f"Check for infinite loops or complex macros in {xacro_path}"
+            )
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Failed to process xacro: {e.stderr}")
+            raise RuntimeError(
+                f"Failed to process xacro: {e.stderr}\n"
+                f"Command: {' '.join(cmd)}\n"
+                f"Suggestion: Check xacro syntax and included files"
+            )
         except FileNotFoundError:
-            raise RuntimeError("xacro command not found. Install with: sudo apt install ros-<distro>-xacro")
+            raise RuntimeError(
+                "xacro command not found. Install with: sudo apt install ros-<distro>-xacro"
+            )
 
     def _extract_robot_specs(self) -> RobotSpecs:
         """Extract physical robot specifications with improved geometry calculation"""
@@ -158,8 +245,14 @@ class URDFParser:
         )
 
     def _compute_link_positions(self) -> Dict[str, List[float]]:
-        """Compute link positions in base_link frame (simplified)"""
-        positions = {}
+        """
+        Compute link positions and orientations in base_link frame using proper 3D transforms
+
+        Returns:
+            Dictionary mapping link names to [x, y, z] positions in base_link frame
+        """
+        # Store full transforms (position + rotation matrix) for each link
+        transforms = {}
 
         # Find base_link
         base_link = 'base_link'
@@ -168,20 +261,63 @@ class URDFParser:
                 base_link = link.name
                 break
 
-        positions[base_link] = [0, 0, 0]
+        # Base link has identity transform
+        transforms[base_link] = {
+            'position': np.array([0.0, 0.0, 0.0]),
+            'rotation': np.eye(3)  # Identity rotation matrix
+        }
 
-        # Traverse joints to compute positions
-        for joint in self.robot.joints:
-            if joint.parent in positions:
-                parent_pos = positions[joint.parent]
-                xyz = joint.origin.xyz if joint.origin else [0, 0, 0]
+        # Build map of child to parent relationships
+        joint_map = {joint.child: joint for joint in self.robot.joints}
 
-                child_pos = [
-                    parent_pos[0] + xyz[0],
-                    parent_pos[1] + xyz[1],
-                    parent_pos[2] + xyz[2]
-                ]
-                positions[joint.child] = child_pos
+        # Recursively compute transforms for all links
+        def compute_transform(link_name: str):
+            """Recursively compute transform for a link"""
+            if link_name in transforms:
+                return transforms[link_name]
+
+            # Find parent
+            if link_name not in joint_map:
+                # Orphaned link, use identity
+                transforms[link_name] = {
+                    'position': np.array([0.0, 0.0, 0.0]),
+                    'rotation': np.eye(3)
+                }
+                return transforms[link_name]
+
+            joint = joint_map[link_name]
+
+            # Recursively get parent transform
+            parent_transform = compute_transform(joint.parent)
+
+            # Get joint origin transform
+            xyz = joint.origin.xyz if joint.origin else [0, 0, 0]
+            rpy = joint.origin.rpy if joint.origin else [0, 0, 0]
+
+            # Convert to numpy arrays
+            joint_translation = np.array(xyz)
+            joint_rotation = self.rpy_to_rotation_matrix(rpy[0], rpy[1], rpy[2])
+
+            # Compose transforms: T_child = T_parent * T_joint
+            # Position: p_child = R_parent * p_joint + p_parent
+            child_position = parent_transform['rotation'] @ joint_translation + parent_transform['position']
+
+            # Rotation: R_child = R_parent * R_joint
+            child_rotation = parent_transform['rotation'] @ joint_rotation
+
+            transforms[link_name] = {
+                'position': child_position,
+                'rotation': child_rotation
+            }
+
+            return transforms[link_name]
+
+        # Compute transforms for all links
+        for link in self.robot.links:
+            compute_transform(link.name)
+
+        # Convert to simple position dict for backward compatibility
+        positions = {name: transform['position'].tolist() for name, transform in transforms.items()}
 
         return positions
 

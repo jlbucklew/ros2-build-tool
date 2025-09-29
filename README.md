@@ -1,8 +1,8 @@
-# ROS2 Build Tool - Modular Version 0.2.0
+# ROS2 Build Tool - Modular Version 0.3.0-alpha
 
-**Automated robot workspace generation with sophisticated runtime introspection, template-driven configuration, and self-healing error recovery.**
+**Automated robot workspace generation with sophisticated runtime introspection, Jinja2-templated configuration, and self-healing error recovery.**
 
-Transform robot development from a multi-week expert task into a one-command deployment.
+Transform robot development from a multi-week expert task into a streamlined, automated deployment process.
 
 ## Overview
 
@@ -20,22 +20,37 @@ ROS2 Build Tool automates the complete setup of robot workspaces including:
 
 ## Features
 
-### ✅ Fully Implemented
+### ✅ Fully Implemented (v0.3.0-alpha)
 
-- **Modular Architecture**: 6 focused packages instead of monolithic script
-- **Pydantic Data Models**: Comprehensive validation with clear error messages
-- **Xacro Support**: Automatic processing of .xacro files
-- **Enhanced URDF Parsing**: Transform-aware bounding box, REP-105 validation
-- **ros2_control Integration**: Full hardware interface support
+- **Modular Architecture**: 6 focused packages with clear separation of concerns
+- **Pydantic Data Models**: Comprehensive validation with helpful error messages
+- **Jinja2 Template System**: Validated code generation with syntax checking (NEW)
+- **Xacro Support**: Automatic processing with temporary file cleanup (IMPROVED)
+- **Enhanced URDF Parsing**: Proper 3D transforms with rotation matrices (FIXED)
+- **ros2_control Integration**: Full hardware interface support with plugin detection
 - **Lifecycle Node Management**: Sequential startup with OnStateTransition events
-- **Self-Healing Watchdog**: Topic monitoring with automatic recovery
-- **TF Validation**: tf2_ros Buffer API (not shell commands)
+- **Self-Healing Watchdog**: Dynamic topic introspection + lifecycle recovery (WORKING)
+- **TF Validation**: tf2_ros Buffer API with proper validation
 - **QoS Validation**: Publisher/subscriber compatibility checking
-- **Dynamic Nav2 Parameters**: Truly adaptive (no hardcoded values)
+- **Dynamic Nav2 Parameters**: Adaptive calculations based on robot specs
 - **Diagnostic Aggregator**: Hierarchical health monitoring
-- **Hardware Interface Discovery**: Automatic plugin detection
-- **Interactive Wizard**: questionary-based configuration
-- **Comprehensive Tests**: pytest suite with unit and integration tests
+- **Hardware Interface Discovery**: Runtime package and executable discovery
+- **Interactive Wizard**: questionary-based configuration with validation
+- **Safe Platform Operations**: Permission checks, confirmation prompts, rollback (NEW)
+
+### ⚠️ Partially Implemented
+
+- **Resource Cleanup**: Temporary files cleaned up, cache expiration pending
+- **Error Messages**: Improved with recovery suggestions, more work needed
+- **Type Hints**: Most functions annotated, some missing return types
+
+### 📋 Known Limitations
+
+- **Recovery system** works for lifecycle nodes only; regular nodes require `respawn=True`
+- **Integration tests** not yet implemented (unit tests only)
+- **Bounds checking** for Nav2 parameters partially implemented
+- **Wizard UX** no back button or preview yet
+- **Dry-run mode** not yet implemented
 
 ## Quick Start
 
@@ -224,33 +239,38 @@ Contributions welcome! Please:
 
 ## Roadmap
 
-### Current Version (0.2.0)
-- ✅ Modular architecture
-- ✅ Pydantic validation
-- ✅ Lifecycle management
-- ✅ Self-healing watchdog
-- ✅ ros2_control integration
-- ✅ Dynamic Nav2 parameters
+### Current Version (0.3.0-alpha) - IN PROGRESS
+- ✅ Jinja2 template-based generation
+- ✅ Dynamic topic introspection for watchdog
+- ✅ Proper 3D transform calculations
+- ✅ Safe platform install with rollback
+- ✅ Temporary file cleanup
+- ⚠️ Bounds checking (partial)
+- ⚠️ Improved error messages (partial)
+- ❌ Dry-run mode
+- ❌ Wizard improvements
+- ❌ Integration tests
+
+### Next Release (0.3.0-stable)
+- Complete bounds checking for all Nav2 parameters
+- Full integration test suite with launch_testing
+- Wizard back button and preview
+- Dry-run mode
+- Documentation improvements
 
 ### Future Versions
-
-**v0.3.0**: Enhanced Discovery
-- Runtime topic discovery for sensor fusion
-- Automatic QoS detection and configuration
-- Controller manager integration
-- Complete recovery implementation
 
 **v0.4.0**: Advanced Features
 - Plugin system for extensibility
 - SLAM parameter optimization
 - Multi-robot support
-- Docker containerization
+- Controller manager integration
 
-**v0.5.0**: Production Ready
-- launch_testing integration
+**v0.5.0**: Production Readiness
 - Performance benchmarking
 - Sphinx documentation
 - CI/CD pipeline
+- Docker containerization
 
 ## System Requirements
 
@@ -293,6 +313,19 @@ If you use this tool in your research, please cite:
 
 ---
 
-**Status**: ✅ Production Ready (v0.2.0)
+**Status**: ⚠️ Alpha Release (v0.3.0-alpha) - Active Development
 
-From zero to fully functional SLAM + Nav2 navigation with Foxglove control in under 30 minutes.
+Major improvements to self-healing, code generation, and safety. Not yet production-ready.
+
+**What Works Well:**
+- Dynamic topic introspection and lifecycle recovery
+- Template-based launch generation with validation
+- Proper 3D transform calculations
+- Safe system modifications with rollback
+
+**What Needs Work:**
+- Integration testing
+- Complete bounds checking
+- Wizard UX improvements
+
+See [next-steps.md](next-steps.md) for detailed critique and improvement roadmap.

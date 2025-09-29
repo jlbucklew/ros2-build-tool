@@ -1,11 +1,57 @@
 """
-Dynamic Nav2 parameter generation with adaptive calculations based on robot specifications
+Dynamic Nav2 parameter generation with adaptive calculations, bounds checking, and validation
 """
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any, Tuple
 from ros2_build_tool_core.models import RobotSpecs, RobotProfile, UseCase
+
+
+# Nav2 parameter bounds and constants (from Nav2 documentation)
+class Nav2Bounds:
+    """Nav2 parameter bounds and physical constants for validation"""
+
+    # Velocity bounds (m/s and rad/s)
+    MIN_LINEAR_VEL = 0.01  # Minimum meaningful linear velocity
+    MAX_LINEAR_VEL = 10.0  # Maximum reasonable linear velocity
+    MIN_ANGULAR_VEL = 0.01  # Minimum meaningful angular velocity
+    MAX_ANGULAR_VEL = 10.0  # Maximum reasonable angular velocity
+
+    # Distance bounds (meters)
+    MIN_ROBOT_RADIUS = 0.05  # Minimum robot radius (5cm)
+    MAX_ROBOT_RADIUS = 5.0  # Maximum robot radius (5m)
+    MIN_LOOKAHEAD_DIST = 0.1  # Minimum lookahead distance
+    MAX_LOOKAHEAD_DIST = 10.0  # Maximum lookahead distance
+    MIN_INFLATION_RADIUS = 0.05  # Minimum inflation radius
+    MAX_INFLATION_RADIUS = 10.0  # Maximum inflation radius
+
+    # Costmap bounds
+    MIN_COSTMAP_SIZE = 2  # Minimum costmap width/height (meters)
+    MAX_COSTMAP_SIZE = 50  # Maximum costmap width/height (meters)
+    MIN_RESOLUTION = 0.01  # Minimum costmap resolution
+    MAX_RESOLUTION = 1.0  # Maximum costmap resolution
+
+    # Frequency bounds (Hz)
+    MIN_CONTROLLER_FREQ = 1.0
+    MAX_CONTROLLER_FREQ = 100.0
+    MIN_UPDATE_FREQ = 0.1
+    MAX_UPDATE_FREQ = 50.0
+
+    # Tolerance bounds
+    MIN_TOLERANCE = 0.001
+    MAX_TOLERANCE = 5.0
+
+    # Safety margins and scaling factors
+    SAFETY_VELOCITY_SCALE = 0.8  # Use 80% of max velocity for safety
+    MIN_VELOCITY_SCALE = 0.5  # At least 50% of max velocity
+    MAX_VELOCITY_SCALE = 0.95  # At most 95% of max velocity
+
+    INFLATION_RADIUS_MIN_SCALE = 1.2  # Inflation should be at least 1.2x robot radius
+    INFLATION_RADIUS_MAX_SCALE = 3.0  # Inflation should not exceed 3x robot radius
+
+    LOOKAHEAD_TIME_MIN = 0.5  # Minimum lookahead time (seconds)
+    LOOKAHEAD_TIME_MAX = 3.0  # Maximum lookahead time (seconds)
 
 
 class Nav2ParameterGenerator:
@@ -24,9 +70,94 @@ class Nav2ParameterGenerator:
         self.config_dir = package_path / 'config'
         self.config_dir.mkdir(exist_ok=True)
         self.logger = logger
+        self.validation_warnings: list = []
+
+    @staticmethod
+    def clamp(value: float, min_val: float, max_val: float, param_name: str = "") -> Tuple[float, bool]:
+        """
+        Clamp a value to valid bounds and return whether it was clamped
+
+        Args:
+            value: Value to clamp
+            min_val: Minimum allowed value
+            max_val: Maximum allowed value
+            param_name: Parameter name for logging
+
+        Returns:
+            Tuple of (clamped_value, was_clamped)
+        """
+        original = value
+        clamped = max(min_val, min(max_val, value))
+        was_clamped = clamped != original
+
+        if was_clamped and param_name:
+            logging.warning(
+                f"Parameter '{param_name}' value {original:.3f} is out of bounds "
+                f"[{min_val:.3f}, {max_val:.3f}]. Clamped to {clamped:.3f}"
+            )
+
+        return clamped, was_clamped
+
+    def validate_robot_specs(self, specs: RobotSpecs) -> bool:
+        """
+        Validate robot specs are within acceptable ranges for Nav2
+
+        Args:
+            specs: Robot specifications
+
+        Returns:
+            True if valid, False if critical errors found
+        """
+        valid = True
+
+        # Check robot radius
+        if specs.robot_radius < Nav2Bounds.MIN_ROBOT_RADIUS:
+            self.logger.error(
+                f"Robot radius {specs.robot_radius:.3f}m is too small (min: {Nav2Bounds.MIN_ROBOT_RADIUS}m). "
+                f"Nav2 may not work correctly."
+            )
+            valid = False
+        elif specs.robot_radius > Nav2Bounds.MAX_ROBOT_RADIUS:
+            self.logger.error(
+                f"Robot radius {specs.robot_radius:.3f}m is too large (max: {Nav2Bounds.MAX_ROBOT_RADIUS}m). "
+                f"Nav2 parameters may be unrealistic."
+            )
+            valid = False
+
+        # Check velocities
+        if specs.max_linear_velocity < Nav2Bounds.MIN_LINEAR_VEL:
+            self.logger.error(
+                f"Max linear velocity {specs.max_linear_velocity:.3f}m/s is too low (min: {Nav2Bounds.MIN_LINEAR_VEL}m/s)"
+            )
+            valid = False
+        elif specs.max_linear_velocity > Nav2Bounds.MAX_LINEAR_VEL:
+            self.logger.warning(
+                f"Max linear velocity {specs.max_linear_velocity:.3f}m/s is very high (typical max: {Nav2Bounds.MAX_LINEAR_VEL}m/s). "
+                f"Ensure your robot can handle these speeds safely."
+            )
+
+        if specs.max_angular_velocity < Nav2Bounds.MIN_ANGULAR_VEL:
+            self.logger.error(
+                f"Max angular velocity {specs.max_angular_velocity:.3f}rad/s is too low (min: {Nav2Bounds.MIN_ANGULAR_VEL}rad/s)"
+            )
+            valid = False
+        elif specs.max_angular_velocity > Nav2Bounds.MAX_ANGULAR_VEL:
+            self.logger.warning(
+                f"Max angular velocity {specs.max_angular_velocity:.3f}rad/s is very high (typical max: {Nav2Bounds.MAX_ANGULAR_VEL}rad/s)"
+            )
+
+        return valid
 
     def generate_all_nav2_params(self, robot_specs: RobotSpecs, profile: RobotProfile):
-        """Generate complete Nav2 parameter set"""
+        """Generate complete Nav2 parameter set with validation"""
+
+        # Validate robot specs first
+        if not self.validate_robot_specs(robot_specs):
+            self.logger.error(
+                "Robot specifications failed validation. Generated Nav2 parameters may not work correctly.\n"
+                "Please review your URDF or manually adjust robot specifications."
+            )
+            # Continue anyway, but user has been warned
 
         # Select controller based on use case
         controller_plugin = self._select_controller(profile.use_case)
@@ -42,6 +173,12 @@ class Nav2ParameterGenerator:
         self._generate_smoother_server_params(robot_specs)
 
         self.logger.info("Generated complete Nav2 parameter set")
+
+        if self.validation_warnings:
+            self.logger.warning(
+                f"Generated parameters with {len(self.validation_warnings)} warnings. "
+                f"Review the logs above for details."
+            )
 
     def _select_controller(self, use_case: UseCase) -> str:
         """
@@ -63,58 +200,135 @@ class Nav2ParameterGenerator:
 
     def _generate_controller_params(self, specs: RobotSpecs, plugin: str):
         """
-        Generate fully adaptive controller server parameters
+        Generate fully adaptive controller server parameters with bounds checking
 
         Improvements:
         - All parameters calculated from robot specs
-        - No hardcoded values (except physics constants)
+        - Bounds checking on all generated values
         - Velocity-based adaptations
         - Size-based safety margins
         """
 
-        # Conservative velocity (80% of max for safety)
-        desired_linear_vel = specs.max_linear_velocity * 0.8
+        # Conservative velocity (80% of max for safety) with bounds checking
+        desired_linear_vel, _ = self.clamp(
+            specs.max_linear_velocity * Nav2Bounds.SAFETY_VELOCITY_SCALE,
+            Nav2Bounds.MIN_LINEAR_VEL,
+            Nav2Bounds.MAX_LINEAR_VEL,
+            "desired_linear_vel"
+        )
 
-        # Lookahead distance: 1.0-1.5 seconds of travel at desired velocity
-        # Slower robots need less lookahead
-        lookahead_time = 1.0 if desired_linear_vel < 0.5 else 1.5
+        # Lookahead time with bounds
+        lookahead_time = Nav2Bounds.LOOKAHEAD_TIME_MIN if desired_linear_vel < 0.5 else 1.5
+        lookahead_time, _ = self.clamp(
+            lookahead_time,
+            Nav2Bounds.LOOKAHEAD_TIME_MIN,
+            Nav2Bounds.LOOKAHEAD_TIME_MAX,
+            "lookahead_time"
+        )
+
+        # Lookahead distance with bounds
         lookahead_dist = desired_linear_vel * lookahead_time
-        min_lookahead = lookahead_dist * 0.5
-        max_lookahead = lookahead_dist * 1.5
+        lookahead_dist, _ = self.clamp(
+            lookahead_dist,
+            Nav2Bounds.MIN_LOOKAHEAD_DIST,
+            Nav2Bounds.MAX_LOOKAHEAD_DIST,
+            "lookahead_dist"
+        )
+        min_lookahead, _ = self.clamp(lookahead_dist * 0.5, Nav2Bounds.MIN_LOOKAHEAD_DIST, lookahead_dist, "min_lookahead")
+        max_lookahead, _ = self.clamp(lookahead_dist * 1.5, lookahead_dist, Nav2Bounds.MAX_LOOKAHEAD_DIST, "max_lookahead")
 
-        # Regulated scaling radius: 1.5-2.5x robot radius (larger for bigger robots)
-        regulated_scaling_radius = specs.robot_radius * (1.5 + specs.robot_radius)
+        # Regulated scaling radius with bounds
+        regulated_scaling_radius, _ = self.clamp(
+            specs.robot_radius * (1.5 + specs.robot_radius),
+            specs.robot_radius,
+            specs.robot_radius * 3.0,
+            "regulated_scaling_radius"
+        )
 
-        # Velocity threshold: smaller robots need finer control
+        # Velocity threshold (no bounds needed - very small)
         min_vel_threshold = 0.001 if specs.robot_radius < 0.3 else 0.01
 
-        # Transform tolerance: slower robots can have tighter tolerance
-        transform_tolerance = 0.05 if desired_linear_vel < 0.5 else 0.1
+        # Transform tolerance (reasonable range)
+        transform_tolerance, _ = self.clamp(
+            0.05 if desired_linear_vel < 0.5 else 0.1,
+            0.01,
+            0.5,
+            "transform_tolerance"
+        )
 
-        # Required movement for progress: 60-80% of robot radius
-        required_movement = specs.robot_radius * 0.7
+        # Required movement for progress
+        required_movement, _ = self.clamp(
+            specs.robot_radius * 0.7,
+            0.01,
+            specs.robot_radius * 2.0,
+            "required_movement"
+        )
 
-        # Goal tolerance: proportional to robot size with minimum threshold
-        xy_goal_tolerance = max(specs.robot_radius * 0.4, 0.08)
-        yaw_goal_tolerance = 0.12 if specs.robot_radius < 0.3 else 0.20
+        # Goal tolerances with bounds
+        xy_goal_tolerance, _ = self.clamp(
+            max(specs.robot_radius * 0.4, 0.08),
+            Nav2Bounds.MIN_TOLERANCE,
+            Nav2Bounds.MAX_TOLERANCE,
+            "xy_goal_tolerance"
+        )
+        yaw_goal_tolerance, _ = self.clamp(
+            0.12 if specs.robot_radius < 0.3 else 0.20,
+            0.05,
+            0.5,
+            "yaw_goal_tolerance"
+        )
 
-        # Approach velocity: 5-10% of desired velocity
-        min_approach_vel = desired_linear_vel * 0.08
-        approach_scaling_dist = specs.robot_radius * 1.5
+        # Approach velocity with bounds
+        min_approach_vel, _ = self.clamp(
+            desired_linear_vel * 0.08,
+            Nav2Bounds.MIN_LINEAR_VEL,
+            desired_linear_vel * 0.5,
+            "min_approach_vel"
+        )
+        approach_scaling_dist, _ = self.clamp(
+            specs.robot_radius * 1.5,
+            0.1,
+            10.0,
+            "approach_scaling_dist"
+        )
 
-        # Angular velocity: 50-70% of max for smooth rotation
-        rotate_angular_vel = specs.max_angular_velocity * 0.6
-        max_angular_accel = specs.max_angular_velocity * 0.8
+        # Angular velocity with bounds
+        rotate_angular_vel, _ = self.clamp(
+            specs.max_angular_velocity * 0.6,
+            Nav2Bounds.MIN_ANGULAR_VEL,
+            Nav2Bounds.MAX_ANGULAR_VEL,
+            "rotate_angular_vel"
+        )
+        max_angular_accel, _ = self.clamp(
+            specs.max_angular_velocity * 0.8,
+            Nav2Bounds.MIN_ANGULAR_VEL,
+            Nav2Bounds.MAX_ANGULAR_VEL * 2.0,
+            "max_angular_accel"
+        )
 
-        # Collision avoidance time: function of velocity and robot size
-        # Faster/larger robots need more time
-        collision_time = 0.5 + (desired_linear_vel * 0.3) + (specs.robot_radius * 0.5)
+        # Collision avoidance time with bounds
+        collision_time, _ = self.clamp(
+            0.5 + (desired_linear_vel * 0.3) + (specs.robot_radius * 0.5),
+            0.1,
+            5.0,
+            "collision_time"
+        )
 
-        # Pose search distance: proportional to velocity (for path following)
-        max_pose_search = min(desired_linear_vel * 15, 10.0)
+        # Pose search distance with bounds
+        max_pose_search, _ = self.clamp(
+            desired_linear_vel * 15,
+            1.0,
+            10.0,
+            "max_pose_search"
+        )
 
-        # Controller frequency: higher for faster robots
-        controller_freq = 10.0 if desired_linear_vel < 0.5 else 20.0
+        # Controller frequency with bounds
+        controller_freq, _ = self.clamp(
+            10.0 if desired_linear_vel < 0.5 else 20.0,
+            Nav2Bounds.MIN_CONTROLLER_FREQ,
+            Nav2Bounds.MAX_CONTROLLER_FREQ,
+            "controller_freq"
+        )
 
         config = f'''controller_server:
   ros__parameters:
@@ -237,27 +451,49 @@ class Nav2ParameterGenerator:
             f.write(config)
 
     def _generate_costmap_params(self, specs: RobotSpecs, profile: RobotProfile):
-        """Generate costmap parameters with dynamic sizing"""
+        """Generate costmap parameters with dynamic sizing and bounds checking"""
 
         robot_radius = specs.robot_radius
 
-        # Inflation radius: 1.5-2.0x robot radius (safety margin)
-        inflation_radius = robot_radius * 1.8
+        # Inflation radius with bounds checking
+        inflation_radius, _ = self.clamp(
+            robot_radius * Nav2Bounds.INFLATION_RADIUS_MIN_SCALE,
+            Nav2Bounds.MIN_INFLATION_RADIUS,
+            min(robot_radius * Nav2Bounds.INFLATION_RADIUS_MAX_SCALE, Nav2Bounds.MAX_INFLATION_RADIUS),
+            "inflation_radius"
+        )
 
-        # Cost scaling factor: higher for larger robots (more conservative)
-        cost_scaling_factor = 8.0 + (robot_radius * 5.0)
+        # Cost scaling factor with reasonable bounds
+        cost_scaling_factor, _ = self.clamp(
+            8.0 + (robot_radius * 5.0),
+            3.0,
+            20.0,
+            "cost_scaling_factor"
+        )
 
-        # Local costmap: sized for 2-4 seconds of travel
+        # Local costmap sizing with bounds
         prediction_time = 3.0
-        local_width = min(specs.max_linear_velocity * prediction_time * 2, 8.0)
+        local_width = specs.max_linear_velocity * prediction_time * 2
+        local_width, _ = self.clamp(
+            local_width,
+            Nav2Bounds.MIN_COSTMAP_SIZE,
+            Nav2Bounds.MAX_COSTMAP_SIZE,
+            "local_costmap_width"
+        )
         local_height = local_width
 
-        # Update frequencies: higher for faster robots
+        # Update frequencies with bounds
         update_frequency = 3.0 if specs.max_linear_velocity < 0.5 else 7.0
+        update_frequency, _ = self.clamp(
+            update_frequency,
+            Nav2Bounds.MIN_UPDATE_FREQ,
+            Nav2Bounds.MAX_UPDATE_FREQ,
+            "costmap_update_frequency"
+        )
 
-        # Sensor ranges (can be overridden based on actual sensors)
-        max_obstacle_range = 2.5
-        raytrace_range = 3.0
+        # Sensor ranges with reasonable bounds
+        max_obstacle_range, _ = self.clamp(2.5, 0.5, 20.0, "max_obstacle_range")
+        raytrace_range, _ = self.clamp(3.0, 0.5, 25.0, "raytrace_range")
 
         config = f'''global_costmap:
   global_costmap:

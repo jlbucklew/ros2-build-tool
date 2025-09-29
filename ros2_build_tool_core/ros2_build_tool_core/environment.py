@@ -78,7 +78,7 @@ class Environment:
 
         return env
 
-    def clear_cache(self):
+    def clear_cache(self) -> None:
         """Clear environment cache"""
         if self.cache_file.exists():
             self.cache_file.unlink()

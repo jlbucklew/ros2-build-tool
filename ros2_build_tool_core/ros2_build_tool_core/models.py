@@ -134,7 +134,7 @@ class RobotProfile(BaseModel):
             raise ValueError(f'Path does not exist: {v}')
         return v
 
-    def to_yaml(self, path: Path):
+    def to_yaml(self, path: Path) -> None:
         """Save profile to YAML file"""
         data = self.model_dump(mode='json')
         data['use_case'] = self.use_case.value
@@ -147,7 +147,7 @@ class RobotProfile(BaseModel):
             yaml.dump(data, f, default_flow_style=False)
 
     @classmethod
-    def from_yaml(cls, path: Path):
+    def from_yaml(cls, path: Path) -> 'RobotProfile':
         """Load profile from YAML file"""
         with open(path, 'r') as f:
             data = yaml.safe_load(f)
@@ -174,7 +174,7 @@ class DependencyManifest(BaseModel):
     python_packages: List[str] = Field(default_factory=list, description="Python packages")
     source_repos: Dict[str, Dict] = Field(default_factory=dict, description="Source repositories")
 
-    def merge(self, other: 'DependencyManifest'):
+    def merge(self, other: 'DependencyManifest') -> None:
         """Merge another manifest into this one"""
         self.system_apt = list(set(self.system_apt + other.system_apt))
         self.rosdep_keys = list(set(self.rosdep_keys + other.rosdep_keys))

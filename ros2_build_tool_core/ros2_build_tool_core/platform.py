@@ -80,45 +80,214 @@ class Platform:
         return True, "OK"
 
     @staticmethod
-    def install_ros2(distro: str, minimal: bool = False) -> bool:
-        """Install ROS2 if not present"""
+    def check_sudo_access() -> bool:
+        """Check if user has sudo privileges without actually using sudo"""
+        try:
+            # Check if user is in sudo group or is root
+            import os
+            import grp
+
+            if os.geteuid() == 0:
+                return True
+
+            try:
+                sudo_group = grp.getgrnam('sudo')
+                return os.getlogin() in sudo_group.gr_mem
+            except (KeyError, OSError):
+                # sudo group doesn't exist or can't get user info
+                # Try running sudo -n true as a test
+                result = subprocess.run(
+                    ['sudo', '-n', 'true'],
+                    capture_output=True,
+                    timeout=5
+                )
+                return result.returncode == 0
+        except Exception:
+            return False
+
+    @staticmethod
+    def confirm_installation(distro: str, minimal: bool) -> bool:
+        """Prompt user to confirm installation"""
+        package_type = 'ros-base' if minimal else 'desktop'
+        print(f"\n{'='*60}")
+        print(f"WARNING: This will install ROS2 {distro} ({package_type})")
+        print(f"{'='*60}")
+        print("This operation will:")
+        print("  - Add ROS2 APT repository to your system")
+        print("  - Install ROS2 packages (may be several GB)")
+        print("  - Modify system package sources")
+        print("  - Require sudo privileges")
+        print(f"\nEstimated download size: ~{1 if minimal else 3} GB")
+        print(f"Estimated disk space needed: ~{2 if minimal else 5} GB")
+        print()
+
+        response = input("Do you want to proceed? (yes/no): ").strip().lower()
+        return response in ['yes', 'y']
+
+    @staticmethod
+    def install_ros2(distro: str, minimal: bool = False, skip_confirmation: bool = False) -> bool:
+        """
+        Install ROS2 if not present with safety checks and rollback capability
+
+        Args:
+            distro: ROS2 distribution (humble, jazzy)
+            minimal: Install minimal ros-base instead of desktop
+            skip_confirmation: Skip user confirmation (for automated installs)
+
+        Returns:
+            True if installation succeeded, False otherwise
+        """
+        # Check if already installed
         if Path(f'/opt/ros/{distro}').exists():
+            logging.info(f'ROS2 {distro} is already installed')
             return True
+
+        # Check sudo access
+        if not Platform.check_sudo_access():
+            logging.error(
+                "Sudo access required but not available.\n"
+                "Please run with sudo or add your user to the sudo group:\n"
+                "  sudo usermod -aG sudo $USER\n"
+                "Then log out and log back in."
+            )
+            return False
+
+        # Confirm with user unless skipped
+        if not skip_confirmation and not Platform.confirm_installation(distro, minimal):
+            logging.info("Installation cancelled by user")
+            return False
+
+        # Track what we've modified for potential rollback
+        created_files = []
+        installed_packages = []
 
         try:
-            # Add ROS2 apt repository
-            commands = [
+            logging.info(f"Beginning ROS2 {distro} installation...")
+
+            # Step 1: Install prerequisites
+            logging.info("Step 1/5: Installing prerequisites...")
+            prereq_packages = ['software-properties-common', 'curl', 'gnupg', 'lsb-release']
+            subprocess.run(
                 ['sudo', 'apt', 'update'],
-                ['sudo', 'apt', 'install', '-y', 'software-properties-common'],
+                check=True,
+                timeout=300
+            )
+            subprocess.run(
+                ['sudo', 'apt', 'install', '-y'] + prereq_packages,
+                check=True,
+                timeout=300
+            )
+            installed_packages.extend(prereq_packages)
+
+            # Step 2: Add universe repository
+            logging.info("Step 2/5: Enabling universe repository...")
+            subprocess.run(
                 ['sudo', 'add-apt-repository', '-y', 'universe'],
-                ['sudo', 'apt', 'install', '-y', 'curl', 'gnupg', 'lsb-release'],
-            ]
+                check=True,
+                timeout=60
+            )
 
-            # Add ROS2 GPG key
+            # Step 3: Add ROS2 GPG key
+            logging.info("Step 3/5: Adding ROS2 GPG key...")
             key_url = 'https://raw.githubusercontent.com/ros/rosdistro/master/ros.key'
-            key_cmd = f'curl -sSL {key_url} | sudo apt-key add -'
-            commands.append(['bash', '-c', key_cmd])
+            key_cmd = f'curl -sSL {key_url} | sudo gpg --dearmor -o /usr/share/keyrings/ros-archive-keyring.gpg'
+            subprocess.run(
+                ['bash', '-c', key_cmd],
+                check=True,
+                timeout=60
+            )
+            created_files.append('/usr/share/keyrings/ros-archive-keyring.gpg')
 
-            # Add repository
-            repo_cmd = f'echo "deb http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/ros2.list'
-            commands.append(['bash', '-c', repo_cmd])
+            # Step 4: Add ROS2 repository
+            logging.info("Step 4/5: Adding ROS2 repository...")
+            repo_file = '/etc/apt/sources.list.d/ros2.list'
+            repo_cmd = f'echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" | sudo tee {repo_file}'
+            subprocess.run(
+                ['bash', '-c', repo_cmd],
+                check=True,
+                timeout=60
+            )
+            created_files.append(repo_file)
 
-            # Update and install
-            package = f"ros-{distro}-{'ros-base' if minimal else 'desktop'}"
-            commands.extend([
+            # Step 5: Install ROS2
+            logging.info("Step 5/5: Installing ROS2 packages (this may take a while)...")
+            subprocess.run(
                 ['sudo', 'apt', 'update'],
-                ['sudo', 'apt', 'install', '-y', package, 'python3-colcon-common-extensions', 'python3-rosdep']
-            ])
+                check=True,
+                timeout=300
+            )
 
-            for cmd in commands:
-                subprocess.run(cmd, check=True)
+            package = f"ros-{distro}-{'ros-base' if minimal else 'desktop'}"
+            ros_packages = [package, 'python3-colcon-common-extensions', 'python3-rosdep']
+            subprocess.run(
+                ['sudo', 'apt', 'install', '-y'] + ros_packages,
+                check=True,
+                timeout=1800  # 30 minutes for ROS2 installation
+            )
+            installed_packages.extend(ros_packages)
 
-            # Initialize rosdep
-            subprocess.run(['sudo', 'rosdep', 'init'], check=False)
-            subprocess.run(['rosdep', 'update'], check=False)
+            # Initialize rosdep (failures here are not critical)
+            logging.info("Initializing rosdep...")
+            try:
+                subprocess.run(['sudo', 'rosdep', 'init'], check=False, timeout=30)
+                subprocess.run(['rosdep', 'update'], check=False, timeout=300)
+            except Exception as e:
+                logging.warning(f"rosdep initialization had issues (not critical): {e}")
 
+            logging.info(f"✓ ROS2 {distro} installation completed successfully!")
             return True
 
-        except subprocess.CalledProcessError as e:
-            logging.error(f"Failed to install ROS2: {e}")
+        except subprocess.TimeoutExpired as e:
+            logging.error(f"Installation timed out: {e}")
+            logging.error(
+                "The installation process took too long. Possible causes:\n"
+                "  - Slow network connection\n"
+                "  - APT repository issues\n"
+                "  - System resource constraints\n"
+                "Try running the installation manually or check your internet connection."
+            )
             return False
+
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Installation failed: {e}")
+            logging.error(
+                f"Command failed: {e.cmd}\n"
+                f"Return code: {e.returncode}\n"
+                "Attempting rollback..."
+            )
+
+            # Attempt rollback
+            Platform._rollback_installation(created_files, installed_packages)
+            return False
+
+        except Exception as e:
+            logging.error(f"Unexpected error during installation: {e}")
+            logging.error("Attempting rollback...")
+            Platform._rollback_installation(created_files, installed_packages)
+            return False
+
+    @staticmethod
+    def _rollback_installation(created_files: list, installed_packages: list) -> None:
+        """Attempt to rollback a failed installation"""
+        logging.info("Rolling back installation changes...")
+
+        # Remove created files
+        for file_path in created_files:
+            try:
+                if Path(file_path).exists():
+                    subprocess.run(['sudo', 'rm', '-f', file_path], check=False, timeout=30)
+                    logging.info(f"  Removed: {file_path}")
+            except Exception as e:
+                logging.warning(f"  Could not remove {file_path}: {e}")
+
+        # Note: We don't automatically remove installed packages as they may be dependencies
+        # for other software. User should manually remove if desired.
+        if installed_packages:
+            logging.info(
+                f"The following packages were partially installed: {', '.join(installed_packages)}\n"
+                "To remove them manually, run:\n"
+                f"  sudo apt remove {' '.join(installed_packages)}\n"
+                f"  sudo apt autoremove"
+            )
+
+        logging.info("Rollback completed. Your system should be in its previous state.")

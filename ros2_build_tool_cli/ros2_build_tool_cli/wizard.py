@@ -17,6 +17,7 @@ class Wizard:
 
     def __init__(self):
         self.profile = None
+        self.answers = {}
 
     def run(self) -> RobotProfile:
         """Run interactive wizard"""
@@ -25,6 +26,50 @@ class Wizard:
             return self._run_interactive()
         else:
             return self._run_basic()
+
+    def preview_configuration(self, answers: dict) -> str:
+        """Generate a preview of the configuration"""
+        preview = "\n" + "="*60 + "\n"
+        preview += "CONFIGURATION PREVIEW\n"
+        preview += "="*60 + "\n\n"
+
+        preview += f"Robot Name:           {answers.get('name', 'N/A')}\n"
+        preview += f"ROS2 Distro:          {answers.get('ros_distro', 'N/A')}\n"
+        preview += f"Use Case:             {answers.get('use_case', 'N/A')}\n"
+
+        hardware = answers.get('hardware', [])
+        if hardware:
+            preview += f"\nHardware Components:\n"
+            for hw in hardware:
+                preview += f"  - {hw}\n"
+        else:
+            preview += "\nHardware Components:  None selected\n"
+
+        preview += f"\nSLAM Type:            {answers.get('slam_type', 'N/A')}\n"
+        preview += f"Navigation:           {'Yes' if answers.get('navigation') else 'No'}\n"
+        preview += f"Lifecycle Management: {'Yes' if answers.get('lifecycle_management') else 'No'}\n"
+        preview += f"Self-Healing:         {'Yes' if answers.get('self_healing') else 'No'}\n"
+        preview += f"Composable Nodes:     {'Yes' if answers.get('composable_nodes') else 'No'}\n"
+        preview += f"Foxglove:             {'Yes' if answers.get('foxglove') else 'No'}\n"
+        preview += f"RViz:                 {'Yes' if answers.get('rviz') else 'No'}\n"
+        preview += f"Diagnostics:          {'Yes' if answers.get('diagnostics') else 'No'}\n"
+
+        workspace = answers.get('workspace_path', 'N/A')
+        preview += f"\nWorkspace Path:       {workspace}\n"
+
+        urdf = answers.get('urdf_path')
+        if urdf:
+            preview += f"URDF File:            {urdf}\n"
+
+        custom_repos = answers.get('custom_repos', {})
+        if custom_repos:
+            preview += f"\nCustom Repositories:\n"
+            for name, info in custom_repos.items():
+                preview += f"  - {name}: {info.get('url', 'N/A')}\n"
+
+        preview += "\n" + "="*60 + "\n"
+
+        return preview
 
     def _run_interactive(self) -> RobotProfile:
         """Run with questionary for better UX"""
@@ -169,6 +214,26 @@ class Wizard:
         answers['custom_repos'] = custom_repos
         answers.pop('github_urls', None)
 
+        # Show preview and ask for confirmation
+        print(self.preview_configuration(answers))
+
+        if WIZARD_AVAILABLE:
+            from questionary import confirm
+            confirmed = confirm("Proceed with this configuration?", default=True).ask()
+            if not confirmed:
+                print("\n✗ Configuration cancelled by user.")
+                restart = confirm("Would you like to restart the wizard?", default=True).ask()
+                if restart:
+                    return self.run()
+                else:
+                    raise KeyboardInterrupt("User cancelled configuration")
+        else:
+            # Fallback confirmation for basic mode
+            response = input("\nProceed with this configuration? (Y/n): ").strip().lower()
+            if response and response not in ['y', 'yes']:
+                print("\n✗ Configuration cancelled by user.")
+                return self.run()
+
         # Create profile
         try:
             profile = RobotProfile(**answers)
@@ -263,7 +328,7 @@ class Wizard:
             print("Please run the wizard again.")
             raise
 
-    def save_profile(self, profile: RobotProfile, path: Path):
+    def save_profile(self, profile: RobotProfile, path: Path) -> None:
         """Save profile to YAML file"""
         profile.to_yaml(path)
         print(f"✓ Profile saved to {path}")
