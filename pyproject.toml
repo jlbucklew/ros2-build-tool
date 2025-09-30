@@ -1,0 +1,211 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ros2-build-tool"
+version = "1.0.0"
+description = "Production-grade automation tool for ROS2 robot workspace generation"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "ROS2 Build Tool Team", email = "team@ros2buildtool.org"}
+]
+maintainers = [
+    {name = "ROS2 Build Tool Team", email = "team@ros2buildtool.org"}
+]
+keywords = [
+    "ros2",
+    "robotics",
+    "automation",
+    "workspace",
+    "build-tool",
+    "nav2",
+    "slam"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Scientific/Engineering :: Robotics",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+]
+
+dependencies = [
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0.1",
+    "click>=8.1.0",
+    "rich>=13.5.0",
+    "jinja2>=3.1.0",
+    "gitpython>=3.1.0",
+    "httpx>=0.24.0",
+    "aiofiles>=23.0.0",
+    "pathspec>=0.11.0",
+    "python-dotenv>=1.0.0",
+    "jsonschema>=4.19.0",
+    "psutil>=5.9.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-timeout>=2.1.0",
+    "pytest-xdist>=3.3.0",
+    "pytest-mock>=3.11.0",
+    "pytest-asyncio>=0.21.0",
+    "hypothesis>=6.82.0",
+    "responses>=0.23.0",
+    "faker>=19.2.0",
+    "factory-boy>=3.3.0",
+]
+
+dev = [
+    "black>=23.7.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.4.0",
+    "pylint>=2.17.0",
+    "bandit[toml]>=1.7.0",
+    "pre-commit>=3.3.0",
+]
+
+docs = [
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=1.2.2",
+    "sphinx-autodoc-typehints>=1.23.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-org/ros2-build-tool"
+Documentation = "https://ros2-build-tool.readthedocs.io"
+Repository = "https://github.com/your-org/ros2-build-tool.git"
+"Bug Reports" = "https://github.com/your-org/ros2-build-tool/issues"
+Changelog = "https://github.com/your-org/ros2-build-tool/blob/main/CHANGELOG.md"
+
+[project.scripts]
+ros2-build-tool = "ros2_build_tool.cli:main"
+rbt = "ros2_build_tool.cli:main"  # Short alias
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ros2_build_tool = [
+    "templates/*.j2",
+    "templates/*.yaml",
+    "data/*.yaml",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py38", "py39", "py310", "py311"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_unimported = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[tool.pylint.messages_control]
+disable = "C0330, C0326"
+max-line-length = 100
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/conftest.py"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+precision = 2
+show_missing = true
+skip_covered = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--cov=src/ros2_build_tool",
+    "--cov-report=term-missing",
+    "--cov-report=html:htmlcov",
+    "--cov-report=xml:coverage.xml",
+    "--cov-fail-under=80",
+]
+markers = [
+    "unit: Unit tests (fast, isolated)",
+    "integration: Integration tests (may require ROS2)",
+    "e2e: End-to-end tests",
+    "slow: Slow tests",
+    "requires_ros: Tests requiring ROS2 environment",
+]
+
+[tool.bandit]
+targets = ["src"]
+exclude_dirs = ["tests", "docs"]
+severity = "medium"
+confidence = "medium"
+max_lines = 500
+progress = true

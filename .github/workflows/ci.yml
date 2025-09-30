@@ -1,0 +1,305 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop, production-restart]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight UTC
+
+env:
+  PYTHON_VERSION: '3.10'
+  ROS_DISTRO: 'humble'
+  COVERAGE_THRESHOLD: 80
+
+jobs:
+  # Quality checks run first and fast
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements/*.txt') }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/dev.txt
+
+      - name: Black formatting check
+        run: black --check src tests
+
+      - name: isort import check
+        run: isort --check-only src tests
+
+      - name: Flake8 linting
+        run: flake8 src tests
+
+      - name: MyPy type checking
+        run: mypy src
+
+      - name: Security scan with Bandit
+        run: bandit -r src -f json -o bandit-report.json
+
+      - name: Upload security report
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
+  # Unit tests on multiple platforms
+  unit-tests:
+    name: Unit Tests - ${{ matrix.os }}
+    needs: quality
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements/*.txt') }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/base.txt
+          pip install -r requirements/test.txt
+
+      - name: Run unit tests with coverage
+        run: |
+          pytest tests/unit \
+            --cov=src/ros2_build_tool \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=${{ env.COVERAGE_THRESHOLD }} \
+            -v
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unittests-${{ matrix.os }}-py${{ matrix.python-version }}
+          name: Unit Tests ${{ matrix.os }} Python ${{ matrix.python-version }}
+
+  # Integration tests with ROS2
+  integration-tests:
+    name: Integration Tests - ROS2 ${{ env.ROS_DISTRO }}
+    needs: unit-tests
+    runs-on: ubuntu-22.04
+    container:
+      image: osrf/ros:humble-desktop
+      options: --privileged
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y python3-pip python3-pytest python3-pytest-cov
+
+      - name: Install Python dependencies
+        run: |
+          pip3 install -r requirements/base.txt
+          pip3 install -r requirements/test.txt
+
+      - name: Source ROS2 and run integration tests
+        run: |
+          source /opt/ros/humble/setup.bash
+          pytest tests/integration \
+            --cov=src/ros2_build_tool \
+            --cov-report=xml \
+            -v
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: integration
+          name: Integration Tests
+
+  # End-to-end tests with Docker
+  e2e-tests:
+    name: E2E Tests
+    needs: integration-tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build test image
+        run: |
+          docker build -f docker/Dockerfile.test -t ros2-build-tool:test .
+
+      - name: Run E2E tests in Docker
+        run: |
+          docker run --rm \
+            -v $(pwd)/tests:/workspace/tests \
+            -v $(pwd)/coverage:/workspace/coverage \
+            ros2-build-tool:test \
+            pytest tests/e2e -v --cov-report=xml:/workspace/coverage/e2e.xml
+
+      - name: Upload E2E coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage/e2e.xml
+          flags: e2e
+          name: E2E Tests
+
+  # Performance benchmarks
+  benchmark:
+    name: Performance Benchmarks
+    needs: unit-tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements/base.txt
+          pip install -r requirements/benchmark.txt
+
+      - name: Run benchmarks
+        run: |
+          python -m pytest tests/benchmarks \
+            --benchmark-only \
+            --benchmark-json=benchmark.json
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'pytest'
+          output-file-path: benchmark.json
+          comment-on-alert: true
+          alert-threshold: '150%'
+          fail-on-alert: true
+
+  # Docker build and push
+  docker:
+    name: Docker Build
+    needs: [unit-tests, integration-tests]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/ros2-build-tool:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/ros2-build-tool:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Documentation build
+  docs:
+    name: Documentation
+    needs: quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements/docs.txt
+
+      - name: Build documentation
+        run: |
+          cd docs
+          make html
+
+      - name: Upload documentation
+        uses: actions/upload-artifact@v3
+        with:
+          name: documentation
+          path: docs/_build/html
+
+  # Release job (only on tags)
+  release:
+    name: Release
+    needs: [unit-tests, integration-tests, e2e-tests, docker, docs]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install build tools
+        run: |
+          pip install build twine
+
+      - name: Build package
+        run: python -m build
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: twine upload dist/*
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
