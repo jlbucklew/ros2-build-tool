@@ -86,11 +86,11 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-org/ros2-build-tool"
-Documentation = "https://ros2-build-tool.readthedocs.io"
-Repository = "https://github.com/your-org/ros2-build-tool.git"
-"Bug Reports" = "https://github.com/your-org/ros2-build-tool/issues"
-Changelog = "https://github.com/your-org/ros2-build-tool/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/jlbucklew/ros2-build-tool"
+Documentation = "https://github.com/jlbucklew/ros2-build-tool/wiki"
+Repository = "https://github.com/jlbucklew/ros2-build-tool.git"
+"Bug Reports" = "https://github.com/jlbucklew/ros2-build-tool/issues"
+Changelog = "https://github.com/jlbucklew/ros2-build-tool/blob/main/CHANGELOG.md"
 
 [project.scripts]
 ros2-build-tool = "ros2_build_tool.cli:main"

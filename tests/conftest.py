@@ -105,8 +105,7 @@ def sample_nav2_params() -> Dict[str, Any]:
                 "controller_plugins": ["FollowPath"],
                 "FollowPath": {
                     "plugin": (
-                        "nav2_regulated_pure_pursuit_controller::"
-                        "RegulatedPurePursuitController"
+                        "nav2_regulated_pure_pursuit_controller::" "RegulatedPurePursuitController"
                     ),
                     "desired_linear_vel": 0.5,
                     "lookahead_dist": 0.6,
