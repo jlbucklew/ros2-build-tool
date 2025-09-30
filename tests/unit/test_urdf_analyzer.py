@@ -4,19 +4,13 @@ Written BEFORE implementation following TDD principles.
 These tests define the expected behavior of the URDF analyzer.
 """
 
-import pytest
-import numpy as np
 from pathlib import Path
-from typing import List, Tuple
+
+import numpy as np
+import pytest
 
 # Import will fail initially - that's expected in TDD
-from ros2_build_tool.core.urdf_analyzer import (
-    URDFAnalyzer,
-    Frame,
-    Transform,
-    Joint,
-    Link
-)
+from ros2_build_tool.core.urdf_analyzer import Transform, URDFAnalyzer
 
 
 class TestURDFAnalyzer:
@@ -69,8 +63,7 @@ class TestURDFAnalyzer:
     def test_compute_transform_matrix(self):
         """Test computing 4x4 transform matrix from position and orientation."""
         transform = Transform(
-            translation=(1.0, 2.0, 3.0),
-            rotation=(0.0, 0.0, 1.57079632679)  # 90 degrees in Z
+            translation=(1.0, 2.0, 3.0), rotation=(0.0, 0.0, 1.57079632679)  # 90 degrees in Z
         )
 
         matrix = transform.to_matrix()

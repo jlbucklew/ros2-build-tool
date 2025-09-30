@@ -4,9 +4,10 @@ Written BEFORE implementation following TDD principles.
 These tests define the expected behavior of the robot spec parser.
 """
 
-import pytest
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
+
+import pytest
 
 # Import will fail initially - that's expected in TDD
 from ros2_build_tool.core.robot_spec import RobotSpec, RobotType, SensorType
@@ -47,11 +48,7 @@ class TestRobotSpec:
         invalid_spec = {
             "name": "test_robot",
             "type": "differential_drive",
-            "dimensions": {
-                "length": -0.5,  # Invalid negative
-                "width": 0.3,
-                "height": 0.2
-            }
+            "dimensions": {"length": -0.5, "width": 0.3, "height": 0.2},  # Invalid negative
         }
 
         with pytest.raises(ValueError, match=r"length.*must be positive"):
@@ -78,7 +75,7 @@ class TestRobotSpec:
         import yaml
 
         yaml_file = temp_workspace / "robot_spec.yaml"
-        with open(yaml_file, 'w') as f:
+        with open(yaml_file, "w") as f:
             yaml.dump(robot_spec, f)
 
         spec = RobotSpec.from_yaml(yaml_file)
@@ -131,18 +128,21 @@ class TestRobotSpec:
         assert len(camera_sensors) == 0
 
     @pytest.mark.unit
-    @pytest.mark.parametrize("robot_type,expected_controller", [
-        ("differential_drive", "nav2_regulated_pure_pursuit_controller"),
-        ("ackermann", "nav2_regulated_pure_pursuit_controller"),
-        ("omnidirectional", "nav2_mppi_controller"),
-        ("legged", "nav2_dwb_controller"),
-    ])
+    @pytest.mark.parametrize(
+        "robot_type,expected_controller",
+        [
+            ("differential_drive", "nav2_regulated_pure_pursuit_controller"),
+            ("ackermann", "nav2_regulated_pure_pursuit_controller"),
+            ("omnidirectional", "nav2_mppi_controller"),
+            ("legged", "nav2_dwb_controller"),
+        ],
+    )
     def test_robot_spec_recommended_controller(self, robot_type: str, expected_controller: str):
         """Test getting recommended controller based on robot type."""
         spec_dict = {
             "name": "test_robot",
             "type": robot_type,
-            "dimensions": {"length": 0.5, "width": 0.3, "height": 0.2}
+            "dimensions": {"length": 0.5, "width": 0.3, "height": 0.2},
         }
         spec = RobotSpec.from_dict(spec_dict)
 

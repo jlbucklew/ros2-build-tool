@@ -7,10 +7,10 @@ before any implementation code.
 
 import tempfile
 from pathlib import Path
-from typing import Generator, Dict, Any
-from unittest.mock import Mock, MagicMock
+from typing import Any, Dict, Generator
+from unittest.mock import MagicMock, Mock
+
 import pytest
-import yaml
 
 
 @pytest.fixture
@@ -55,26 +55,13 @@ def robot_spec() -> Dict[str, Any]:
             "width": 0.3,
             "height": 0.2,
             "wheel_radius": 0.1,
-            "wheel_separation": 0.3
+            "wheel_separation": 0.3,
         },
         "sensors": [
-            {
-                "type": "lidar",
-                "model": "rplidar_a2",
-                "frame": "lidar_link",
-                "topic": "/scan"
-            },
-            {
-                "type": "imu",
-                "model": "mpu6050",
-                "frame": "imu_link",
-                "topic": "/imu/data"
-            }
+            {"type": "lidar", "model": "rplidar_a2", "frame": "lidar_link", "topic": "/scan"},
+            {"type": "imu", "model": "mpu6050", "frame": "imu_link", "topic": "/imu/data"},
         ],
-        "max_velocity": {
-            "linear": 1.0,
-            "angular": 2.0
-        }
+        "max_velocity": {"linear": 1.0, "angular": 2.0},
     }
 
 
@@ -87,7 +74,7 @@ def mock_ros2_environment() -> Dict[str, str]:
         "ROS_PYTHON_VERSION": "3",
         "AMENT_PREFIX_PATH": "/opt/ros/humble",
         "PYTHONPATH": "/opt/ros/humble/lib/python3.10/site-packages",
-        "CMAKE_PREFIX_PATH": "/opt/ros/humble"
+        "CMAKE_PREFIX_PATH": "/opt/ros/humble",
     }
 
 
@@ -117,13 +104,16 @@ def sample_nav2_params() -> Dict[str, Any]:
                 "goal_checker_plugin": "goal_checker",
                 "controller_plugins": ["FollowPath"],
                 "FollowPath": {
-                    "plugin": "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController",
+                    "plugin": (
+                        "nav2_regulated_pure_pursuit_controller::"
+                        "RegulatedPurePursuitController"
+                    ),
                     "desired_linear_vel": 0.5,
                     "lookahead_dist": 0.6,
                     "min_lookahead_dist": 0.3,
                     "max_lookahead_dist": 0.9,
                     "use_velocity_scaled_lookahead_dist": False,
-                }
+                },
             }
         }
     }
@@ -157,18 +147,8 @@ def capture_logs(caplog):
 # Markers for test categorization
 def pytest_configure(config):
     """Register custom markers."""
-    config.addinivalue_line(
-        "markers", "unit: Unit tests (fast, no external dependencies)"
-    )
-    config.addinivalue_line(
-        "markers", "integration: Integration tests (may require ROS2)"
-    )
-    config.addinivalue_line(
-        "markers", "e2e: End-to-end tests (full system test)"
-    )
-    config.addinivalue_line(
-        "markers", "slow: Tests that take more than 1 second"
-    )
-    config.addinivalue_line(
-        "markers", "requires_ros: Tests that require ROS2 environment"
-    )
+    config.addinivalue_line("markers", "unit: Unit tests (fast, no external dependencies)")
+    config.addinivalue_line("markers", "integration: Integration tests (may require ROS2)")
+    config.addinivalue_line("markers", "e2e: End-to-end tests (full system test)")
+    config.addinivalue_line("markers", "slow: Tests that take more than 1 second")
+    config.addinivalue_line("markers", "requires_ros: Tests that require ROS2 environment")

@@ -3,38 +3,30 @@
 This module provides the CLI commands for the ROS2 Build Tool package.
 """
 
-import sys
 import logging
+import sys
 from pathlib import Path
-from typing import Optional
 
 import click
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
-from rich import print as rprint
+from rich.table import Table
 
-from ros2_build_tool import (
-    __version__,
-    RobotSpec,
-    URDFAnalyzer,
-    RobotType
-)
+from ros2_build_tool import Dimensions, RobotSpec, RobotType, URDFAnalyzer, __version__
 
 # Initialize console for rich output
 console = Console()
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
 @click.group()
 @click.version_option(version=__version__)
-@click.option('-v', '--verbose', is_flag=True, help='Enable verbose logging')
+@click.option("-v", "--verbose", is_flag=True, help="Enable verbose logging")
 def main(verbose: bool) -> None:
     """ROS2 Build Tool - Production-grade automation for ROS2 workspaces.
 
@@ -47,7 +39,7 @@ def main(verbose: bool) -> None:
 
 
 @main.command()
-@click.argument('spec_file', type=click.Path(exists=True, path_type=Path))
+@click.argument("spec_file", type=click.Path(exists=True, path_type=Path))
 def validate(spec_file: Path) -> None:
     """Validate a robot specification file.
 
@@ -100,8 +92,8 @@ def validate(spec_file: Path) -> None:
 
 
 @main.command()
-@click.argument('urdf_file', type=click.Path(exists=True, path_type=Path))
-@click.option('--xacro', is_flag=True, help='Process file as xacro instead of URDF')
+@click.argument("urdf_file", type=click.Path(exists=True, path_type=Path))
+@click.option("--xacro", is_flag=True, help="Process file as xacro instead of URDF")
 def analyze_urdf(urdf_file: Path, xacro: bool) -> None:
     """Analyze a URDF or xacro robot model file.
 
@@ -121,7 +113,9 @@ def analyze_urdf(urdf_file: Path, xacro: bool) -> None:
         else:
             analyzer = URDFAnalyzer.from_file(urdf_file)
 
-        console.print(f"[bold green]✓[/bold green] Successfully parsed robot model: {analyzer.robot_name}")
+        console.print(
+            f"[bold green]✓[/bold green] Successfully parsed robot model: {analyzer.robot_name}"
+        )
 
         # Display analysis results
         table = Table(title="URDF Analysis Results")
@@ -164,7 +158,9 @@ def analyze_urdf(urdf_file: Path, xacro: bool) -> None:
             if validation.has_cycles:
                 console.print("  • TF tree contains cycles")
             if validation.disconnected_frames:
-                console.print(f"  • Disconnected frames: {', '.join(validation.disconnected_frames)}")
+                console.print(
+                    f"  • Disconnected frames: {', '.join(validation.disconnected_frames)}"
+                )
 
         sys.exit(0 if validation.is_valid else 1)
 
@@ -178,23 +174,29 @@ def analyze_urdf(urdf_file: Path, xacro: bool) -> None:
 
 
 @main.command()
-@click.argument('output_file', type=click.Path(path_type=Path))
-@click.option('--name', required=True, help='Robot name')
-@click.option('--type', 'robot_type', required=True,
-              type=click.Choice(['differential_drive', 'ackermann', 'omnidirectional', 'legged']),
-              help='Robot type')
-@click.option('--length', type=float, required=True, help='Robot length in meters')
-@click.option('--width', type=float, required=True, help='Robot width in meters')
-@click.option('--height', type=float, required=True, help='Robot height in meters')
-def create_spec(output_file: Path, name: str, robot_type: str,
-                length: float, width: float, height: float) -> None:
+@click.argument("output_file", type=click.Path(path_type=Path))
+@click.option("--name", required=True, help="Robot name")
+@click.option(
+    "--type",
+    "robot_type",
+    required=True,
+    type=click.Choice(["differential_drive", "ackermann", "omnidirectional", "legged"]),
+    help="Robot type",
+)
+@click.option("--length", type=float, required=True, help="Robot length in meters")
+@click.option("--width", type=float, required=True, help="Robot width in meters")
+@click.option("--height", type=float, required=True, help="Robot height in meters")
+def create_spec(
+    output_file: Path, name: str, robot_type: str, length: float, width: float, height: float
+) -> None:
     """Create a new robot specification file.
 
     \b
     OUTPUT_FILE: Path where the specification file will be created
 
     Examples:
-        rbt create-spec robot.yaml --name my_robot --type differential_drive --length 0.5 --width 0.3 --height 0.2
+        rbt create-spec robot.yaml --name my_robot --type differential_drive \\
+            --length 0.5 --width 0.3 --height 0.2
     """
     try:
         console.print(f"[bold blue]Creating robot specification:[/bold blue] {output_file}")
@@ -203,17 +205,14 @@ def create_spec(output_file: Path, name: str, robot_type: str,
         spec = RobotSpec(
             name=name,
             type=RobotType(robot_type),
-            dimensions={
-                'length': length,
-                'width': width,
-                'height': height
-            }
+            dimensions=Dimensions(length=length, width=width, height=height),
+            sensors=[],
         )
 
         # Save to file
         spec.to_yaml(output_file)
 
-        console.print(f"[bold green]✓[/bold green] Robot specification created successfully!")
+        console.print("[bold green]✓[/bold green] Robot specification created successfully!")
         console.print(f"  Saved to: {output_file}")
 
         sys.exit(0)
@@ -252,11 +251,11 @@ def info() -> None:
 
 [dim]Homepage: https://github.com/your-org/ros2-build-tool[/dim]""",
         title="[bold]ROS2 Build Tool[/bold]",
-        border_style="blue"
+        border_style="blue",
     )
     console.print(panel)
     sys.exit(0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -4,18 +4,19 @@ This module provides functionality to parse URDF and Xacro files,
 extract frames, compute transforms, and validate TF trees.
 """
 
-from pathlib import Path
-from typing import List, Optional, Tuple, Dict, Any
+import subprocess  # nosec B404 - needed for xacro processing
+import xml.etree.ElementTree as ET  # nosec B405 - URDF files are trusted
 from dataclasses import dataclass
-import xml.etree.ElementTree as ET
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 import numpy as np
-import subprocess
-import tempfile
 
 
 @dataclass
 class Transform:
     """3D transform with translation and rotation."""
+
     translation: Tuple[float, float, float]
     rotation: Tuple[float, float, float]  # Roll, Pitch, Yaw
 
@@ -40,12 +41,14 @@ class Transform:
         sy = np.sin(yaw)
 
         # Build 4x4 transformation matrix
-        matrix = np.array([
-            [cy*cp,  cy*sp*sr - sy*cr,  cy*sp*cr + sy*sr,  x],
-            [sy*cp,  sy*sp*sr + cy*cr,  sy*sp*cr - cy*sr,  y],
-            [-sp,    cp*sr,             cp*cr,             z],
-            [0,      0,                 0,                 1]
-        ])
+        matrix = np.array(
+            [
+                [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr, x],
+                [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr, y],
+                [-sp, cp * sr, cp * cr, z],
+                [0, 0, 0, 1],
+            ]
+        )
 
         return matrix
 
@@ -53,6 +56,7 @@ class Transform:
 @dataclass
 class Frame:
     """TF frame information."""
+
     name: str
     parent: Optional[str] = None
     transform: Optional[Transform] = None
@@ -61,6 +65,7 @@ class Frame:
 @dataclass
 class JointLimits:
     """Joint limits."""
+
     lower: float
     upper: float
 
@@ -68,6 +73,7 @@ class JointLimits:
 @dataclass
 class Joint:
     """Joint information."""
+
     name: str
     type: str
     parent: str
@@ -80,6 +86,7 @@ class Joint:
 @dataclass
 class Link:
     """Link information."""
+
     name: str
     visual: Optional[Dict[str, Any]] = None
     collision: Optional[Dict[str, Any]] = None
@@ -89,6 +96,7 @@ class Link:
 @dataclass
 class Dimensions:
     """Robot dimensions."""
+
     length: float
     width: float
     height: float
@@ -97,6 +105,7 @@ class Dimensions:
 @dataclass
 class ValidationResult:
     """TF tree validation result."""
+
     is_valid: bool
     has_single_root: bool
     root_frame: Optional[str]
@@ -113,13 +122,14 @@ class URDFAnalyzer:
         Args:
             robot_name: Name of the robot
         """
+        self._tree: Optional[ET.Element] = None
         self.robot_name = robot_name
         self.links: Dict[str, Link] = {}
         self.joints: Dict[str, Joint] = {}
         self._tree = None
 
     @classmethod
-    def from_string(cls, urdf_content: str) -> 'URDFAnalyzer':
+    def from_string(cls, urdf_content: str) -> "URDFAnalyzer":
         """Parse URDF from string content.
 
         Args:
@@ -128,8 +138,8 @@ class URDFAnalyzer:
         Returns:
             URDFAnalyzer instance
         """
-        tree = ET.fromstring(urdf_content)
-        robot_name = tree.get('name', 'robot')
+        tree = ET.fromstring(urdf_content)  # nosec B314 - URDF content from trusted sources
+        robot_name = tree.get("name", "robot")
 
         analyzer = cls(robot_name)
         analyzer._tree = tree
@@ -138,7 +148,7 @@ class URDFAnalyzer:
         return analyzer
 
     @classmethod
-    def from_file(cls, file_path: Path) -> 'URDFAnalyzer':
+    def from_file(cls, file_path: Path) -> "URDFAnalyzer":
         """Parse URDF from file.
 
         Args:
@@ -153,7 +163,7 @@ class URDFAnalyzer:
             IOError: If reading fails
         """
         try:
-            with open(file_path, 'r') as f:
+            with open(file_path, "r") as f:
                 content = f.read()
         except FileNotFoundError:
             raise FileNotFoundError(f"URDF file not found: {file_path}")
@@ -165,7 +175,7 @@ class URDFAnalyzer:
         return cls.from_string(content)
 
     @classmethod
-    def from_xacro(cls, xacro_file: Path) -> 'URDFAnalyzer':
+    def from_xacro(cls, xacro_file: Union[Path, str]) -> "URDFAnalyzer":
         """Parse xacro file by converting to URDF first.
 
         Args:
@@ -179,58 +189,60 @@ class URDFAnalyzer:
             ValueError: If xacro file path is invalid
             subprocess.TimeoutExpired: If xacro processing times out
         """
-        import os
-
         # Validate file path to prevent command injection
         if not isinstance(xacro_file, Path):
-            xacro_file = Path(xacro_file)
+            xacro_path = Path(xacro_file)
+        else:
+            xacro_path = xacro_file
 
         # Ensure file exists and is a regular file
-        if not xacro_file.exists():
-            raise FileNotFoundError(f"Xacro file not found: {xacro_file}")
+        if not xacro_path.exists():
+            raise FileNotFoundError(f"Xacro file not found: {xacro_path}")
 
-        if not xacro_file.is_file():
-            raise ValueError(f"Path is not a file: {xacro_file}")
+        if not xacro_path.is_file():
+            raise ValueError(f"Path is not a file: {xacro_path}")
 
         # Resolve to absolute path to prevent path traversal attacks
-        xacro_file = xacro_file.resolve()
+        xacro_path = xacro_path.resolve()
 
         # Process xacro file using xacro command
         try:
             # Try to use ROS2 xacro command with timeout
-            result = subprocess.run(
-                ['xacro', str(xacro_file)],
+            # Validated file path, trusted xacro tool
+            result = subprocess.run(  # nosec B603, B607
+                ["xacro", str(xacro_path)],
                 capture_output=True,
                 text=True,
                 check=True,
-                timeout=30  # 30 second timeout to prevent hanging
+                timeout=30,  # 30 second timeout to prevent hanging
             )
             urdf_content = result.stdout
         except subprocess.TimeoutExpired:
             raise subprocess.TimeoutExpired(
-                cmd=['xacro', str(xacro_file)],
+                cmd=["xacro", str(xacro_file)],
                 timeout=30,
-                output="Xacro processing timed out after 30 seconds"
+                output="Xacro processing timed out after 30 seconds",
             )
         except (subprocess.CalledProcessError, FileNotFoundError):
             # Fallback to simple XML parsing if xacro not available
             # NOTE: This fallback does NOT support xacro properties/macros properly
             # and should only be used for testing purposes
             try:
-                with open(xacro_file, 'r') as f:
+                with open(xacro_file, "r") as f:
                     content = f.read()
             except Exception as e:
                 raise IOError(f"Error reading xacro file {xacro_file}: {e}")
 
             # Remove xacro namespace and properties for simple parsing
-            content = content.replace('xmlns:xacro="http://www.ros.org/wiki/xacro"', '')
+            content = content.replace('xmlns:xacro="http://www.ros.org/wiki/xacro"', "")
             # Remove xacro:property tags
             import re
-            content = re.sub(r'<xacro:property[^>]*>', '', content)
-            content = re.sub(r'</xacro:property>', '', content)
+
+            content = re.sub(r"<xacro:property[^>]*>", "", content)
+            content = re.sub(r"</xacro:property>", "", content)
 
             # Check for unresolved xacro properties and raise error
-            if '${' in content:
+            if "${" in content:
                 raise ValueError(
                     f"Xacro file contains unresolved properties (e.g., ${'{...}'}). "
                     f"Please install xacro tool or provide a fully resolved URDF file."
@@ -240,63 +252,72 @@ class URDFAnalyzer:
 
         return cls.from_string(urdf_content)
 
-    def _parse_urdf(self, tree: ET.Element):
+    def _parse_urdf(self, tree: ET.Element) -> None:
         """Parse URDF tree into links and joints.
 
         Args:
             tree: XML ElementTree root
         """
         # Parse links
-        for link_elem in tree.findall('link'):
-            link_name = link_elem.get('name')
+        for link_elem in tree.findall("link"):
+            link_name = link_elem.get("name")
+            if not link_name:
+                continue
             link = Link(name=link_name)
 
             # Parse visual if present
-            visual = link_elem.find('visual')
+            visual = link_elem.find("visual")
             if visual is not None:
                 link.visual = self._parse_visual(visual)
 
             self.links[link_name] = link
 
         # Parse joints
-        for joint_elem in tree.findall('joint'):
-            joint_name = joint_elem.get('name')
-            joint_type = joint_elem.get('type', 'fixed')
+        for joint_elem in tree.findall("joint"):
+            joint_name = joint_elem.get("name")
+            if not joint_name:
+                continue
+            joint_type = joint_elem.get("type", "fixed")
 
-            parent_elem = joint_elem.find('parent')
-            child_elem = joint_elem.find('child')
+            parent_elem = joint_elem.find("parent")
+            child_elem = joint_elem.find("child")
 
             if parent_elem is None or child_elem is None:
+                continue
+
+            parent_link = parent_elem.get("link")
+            child_link = child_elem.get("link")
+            if not parent_link or not child_link:
                 continue
 
             joint = Joint(
                 name=joint_name,
                 type=joint_type,
-                parent=parent_elem.get('link'),
-                child=child_elem.get('link')
+                parent=parent_link,
+                child=child_link,
             )
 
             # Parse origin
-            origin_elem = joint_elem.find('origin')
+            origin_elem = joint_elem.find("origin")
             if origin_elem is not None:
-                xyz = origin_elem.get('xyz', '0 0 0').split()
-                rpy = origin_elem.get('rpy', '0 0 0').split()
+                xyz = origin_elem.get("xyz", "0 0 0").split()
+                rpy = origin_elem.get("rpy", "0 0 0").split()
                 joint.origin = Transform(
                     translation=(float(xyz[0]), float(xyz[1]), float(xyz[2])),
-                    rotation=(float(rpy[0]), float(rpy[1]), float(rpy[2]))
+                    rotation=(float(rpy[0]), float(rpy[1]), float(rpy[2])),
                 )
 
             # Parse axis
-            axis_elem = joint_elem.find('axis')
+            axis_elem = joint_elem.find("axis")
             if axis_elem is not None:
-                xyz = axis_elem.get('xyz', '0 0 1').split()
+                xyz = axis_elem.get("xyz", "0 0 1").split()
                 joint.axis = (float(xyz[0]), float(xyz[1]), float(xyz[2]))
 
             # Parse limits
-            limit_elem = joint_elem.find('limit')
+            limit_elem = joint_elem.find("limit")
             if limit_elem is not None:
-                lower = float(limit_elem.get('lower', '0'))
-                upper = float(limit_elem.get('upper', '0'))
+                lower = float(limit_elem.get("lower", "0"))
+                upper = float(limit_elem.get("upper", "0"))
                 joint.limits = JointLimits(lower=lower, upper=upper)
 
             self.joints[joint_name] = joint
@@ -312,13 +333,13 @@ class URDFAnalyzer:
         """
         visual_data = {}
 
-        geometry = visual_elem.find('geometry')
+        geometry = visual_elem.find("geometry")
         if geometry is not None:
-            box = geometry.find('box')
+            box = geometry.find("box")
             if box is not None:
-                size_str = box.get('size', '0 0 0')
+                size_str = box.get("size", "0 0 0")
                 sizes = [float(s) for s in size_str.split()]
-                visual_data['box_size'] = sizes
+                visual_data["box_size"] = sizes
 
         return visual_data
 
@@ -353,7 +374,7 @@ class URDFAnalyzer:
         Returns:
             List of sensor frames
         """
-        sensor_keywords = ['lidar', 'laser', 'camera', 'imu', 'gps', 'sensor']
+        sensor_keywords = ["lidar", "laser", "camera", "imu", "gps", "sensor"]
         frames = self.get_frames()
 
         sensor_frames = []
@@ -418,11 +439,11 @@ class URDFAnalyzer:
             if joint.child not in graph:
                 graph[joint.child] = []
             graph[joint.parent].append((joint.child, False))  # False = forward
-            graph[joint.child].append((joint.parent, True))    # True = reverse
+            graph[joint.child].append((joint.parent, True))  # True = reverse
 
         # BFS to find path
-        queue: deque = deque([(from_frame, [from_frame])])
-        visited = {from_frame}
+        queue: deque[Tuple[str, List[str]]] = deque([(from_frame, [from_frame])])
+        visited: set[str] = {from_frame}
 
         while queue:
             current, path = queue.popleft()
@@ -460,17 +481,11 @@ class URDFAnalyzer:
 
             for joint in self.joints.values():
                 if joint.parent == parent and joint.child == child:
-                    transform = joint.origin or Transform(
-                        translation=(0, 0, 0),
-                        rotation=(0, 0, 0)
-                    )
+                    transform = joint.origin or Transform(translation=(0, 0, 0), rotation=(0, 0, 0))
                     forward = True
                     break
                 elif joint.parent == child and joint.child == parent:
-                    transform = joint.origin or Transform(
-                        translation=(0, 0, 0),
-                        rotation=(0, 0, 0)
-                    )
+                    transform = joint.origin or Transform(translation=(0, 0, 0), rotation=(0, 0, 0))
                     forward = False
                     break
 
@@ -528,9 +543,9 @@ class URDFAnalyzer:
         has_cycles = self._check_cycles()
 
         # Check for disconnected frames
-        disconnected = []
-        if has_single_root:
-            visited = set()
+        disconnected: List[str] = []
+        if has_single_root and root_frame:
+            visited: set[str] = set()
             self._dfs_traverse(root_frame, visited)
             disconnected = list(all_frames - visited)
 
@@ -541,7 +556,7 @@ class URDFAnalyzer:
             has_single_root=has_single_root,
             root_frame=root_frame,
             has_cycles=has_cycles,
-            disconnected_frames=disconnected
+            disconnected_frames=disconnected,
         )
 
     def _check_cycles(self) -> bool:
@@ -551,17 +566,17 @@ class URDFAnalyzer:
             True if cycles exist, False otherwise
         """
         # Build adjacency list
-        graph = {}
+        graph: Dict[str, List[str]] = {}
         for joint in self.joints.values():
             if joint.parent not in graph:
                 graph[joint.parent] = []
             graph[joint.parent].append(joint.child)
 
         # DFS to detect cycles
-        visited = set()
-        rec_stack = set()
+        visited: set[str] = set()
+        rec_stack: set[str] = set()
 
-        def has_cycle(node):
+        def has_cycle(node: str) -> bool:
             visited.add(node)
             rec_stack.add(node)
 
@@ -582,7 +597,7 @@ class URDFAnalyzer:
 
         return False
 
-    def _dfs_traverse(self, node: str, visited: set):
+    def _dfs_traverse(self, node: str, visited: set[str]) -> None:
         """Depth-first search traversal.
 
         Args:
@@ -602,22 +617,18 @@ class URDFAnalyzer:
             Robot dimensions if available
         """
         # Look for base_link or similar
-        base_link = self.links.get('base_link')
+        base_link = self.links.get("base_link")
         if not base_link or not base_link.visual:
             # Try to find any link with visual
             for link in self.links.values():
-                if link.visual and 'box_size' in link.visual:
+                if link.visual and "box_size" in link.visual:
                     base_link = link
                     break
 
-        if base_link and base_link.visual and 'box_size' in base_link.visual:
-            sizes = base_link.visual['box_size']
+        if base_link and base_link.visual and "box_size" in base_link.visual:
+            sizes = base_link.visual["box_size"]
             if len(sizes) >= 3:
-                return Dimensions(
-                    length=sizes[0],
-                    width=sizes[1],
-                    height=sizes[2]
-                )
+                return Dimensions(length=sizes[0], width=sizes[1], height=sizes[2])
 
         return None
 
