@@ -1,0 +1,46 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-7.4.3, pluggy-1.3.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/user/ros2_build_tool
+configfile: pyproject.toml
+plugins: cov-4.1.0
+collected 24 items
+
+tests/test_cli.py::test_cli_help PASSED                                  [  4%]
+tests/test_cli.py::test_cli_version PASSED                               [  8%]
+tests/test_cli.py::test_cli_analyze_missing_file PASSED                  [ 12%]
+tests/test_cli.py::test_cli_analyze_invalid_urdf PASSED                  [ 16%]
+tests/test_cli.py::test_cli_analyze_success PASSED                       [ 20%]
+tests/test_ros2_build_tool.py::test_placeholder PASSED                   [ 25%]
+tests/test_robot_spec.py::test_robot_spec_initialization PASSED          [ 29%]
+tests/test_robot_spec.py::test_robot_spec_from_urdf_simple PASSED        [ 33%]
+tests/test_robot_spec.py::test_robot_spec_from_urdf_with_inertia PASSED  [ 37%]
+tests/test_robot_spec.py::test_robot_spec_to_dict PASSED                 [ 41%]
+tests/test_robot_spec.py::test_robot_spec_validation_mass PASSED         [ 45%]
+tests/test_robot_spec.py::test_robot_spec_validation_joint_limits PASSED [ 50%]
+tests/test_robot_spec.py::test_robot_spec_validation_link_names PASSED   [ 54%]
+tests/test_urdf_analyzer.py::test_urdf_analyzer_initialization PASSED    [ 58%]
+tests/test_urdf_analyzer.py::test_urdf_analyzer_load_valid_urdf PASSED   [ 62%]
+tests/test_urdf_analyzer.py::test_urdf_analyzer_load_invalid_urdf PASSED [ 66%]
+tests/test_urdf_analyzer.py::test_urdf_analyzer_load_missing_file PASSED [ 70%]
+tests/test_urdf_analyzer.py::test_urdf_analyzer_get_joints PASSED        [ 75%]
+tests/test_urdf_analyzer.py::test_urdf_analyzer_get_links PASSED         [ 79%]
+tests/test_urdf_analyzer.py::test_urdf_analyzer_analyze_basic PASSED     [ 83%]
+tests/test_urdf_analyzer.py::test_urdf_analyzer_analyze_with_issues PASSED [ 87%]
+tests/test_urdf_analyzer.py::test_urdf_analyzer_analyze_empty_urdf PASSED [ 91%]
+tests/test_urdf_analyzer.py::test_urdf_analyzer_validate_success PASSED  [ 95%]
+tests/test_urdf_analyzer.py::test_urdf_analyzer_validate_failure PASSED  [100%]
+
+---------- coverage: platform linux, python 3.10.12-final-0 ----------
+Name                                      Stmts   Miss  Cover
+-------------------------------------------------------------
+src/ros2_build_tool/__init__.py               2      0   100%
+src/ros2_build_tool/cli.py                   54     54     0%
+src/ros2_build_tool/robot_spec.py            89      4    96%
+src/ros2_build_tool/urdf_analyzer.py        103      5    95%
+-------------------------------------------------------------
+TOTAL                                       248     63    75%
+Coverage HTML written to dir htmlcov
+
+
+============================== 24 passed in 0.87s ===============================

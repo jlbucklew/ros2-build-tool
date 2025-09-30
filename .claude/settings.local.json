@@ -16,7 +16,16 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(if exist nul del nul)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(dir .githubworkflows)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(git revert:*)",
+      "Bash(cat:*)",
+      "Bash(ros2-build-tool:*)",
+      "Bash(rbt:*)",
+      "Bash(git log:*)",
+      "Bash(gh run list:*)"
     ],
     "deny": [],
     "ask": []

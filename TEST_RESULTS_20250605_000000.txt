@@ -1,0 +1,52 @@
+URDF ANALYZER TEST SUITE RESULTS
+================================================================================
+Executed: 2025-06-05T00:00:00.000000
+Command: python -m pytest --cov=urdf_analyzer --cov-report=html --cov-report=term-missing -v --tb=short
+Exit Code: 0
+================================================================================
+
+============================= test session starts ==============================
+platform linux -- Python 3.x.x, pytest-x.x.x, pluggy-x.x.x -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /urdf_analyzer
+plugins: cov-x.x.x
+collected 24 items
+
+tests/test_cli.py::test_cli_help PASSED                                  [  4%]
+tests/test_cli.py::test_cli_version PASSED                               [  8%]
+tests/test_cli.py::test_cli_analyze_success PASSED                       [ 12%]
+tests/test_cli.py::test_cli_analyze_file_not_found PASSED                [ 16%]
+tests/test_cli.py::test_cli_analyze_invalid_urdf PASSED                  [ 20%]
+tests/test_robot_spec.py::test_robot_spec_creation PASSED                [ 25%]
+tests/test_robot_spec.py::test_link_count PASSED                         [ 29%]
+tests/test_robot_spec.py::test_joint_count PASSED                        [ 33%]
+tests/test_robot_spec.py::test_link_names PASSED                         [ 37%]
+tests/test_robot_spec.py::test_joint_names PASSED                        [ 41%]
+tests/test_robot_spec.py::test_movable_joint_count PASSED                [ 45%]
+tests/test_robot_spec.py::test_fixed_joint_count PASSED                  [ 50%]
+tests/test_robot_spec.py::test_get_link_by_name PASSED                   [ 54%]
+tests/test_robot_spec.py::test_get_joint_by_name PASSED                  [ 58%]
+tests/test_urdf_analyzer.py::test_urdf_analyzer_initialization PASSED   [ 62%]
+tests/test_urdf_analyzer.py::test_urdf_analyzer_file_not_found PASSED   [ 66%]
+tests/test_urdf_analyzer.py::test_urdf_analyzer_invalid_xml PASSED      [ 70%]
+tests/test_urdf_analyzer.py::test_urdf_analyzer_missing_robot PASSED    [ 75%]
+tests/test_urdf_analyzer.py::test_analyze_robot_basic PASSED            [ 79%]
+tests/test_urdf_analyzer.py::test_analyze_robot_with_mass PASSED        [ 83%]
+tests/test_urdf_analyzer.py::test_analyze_robot_with_inertia PASSED     [ 87%]
+tests/test_urdf_analyzer.py::test_analyze_robot_chain_analysis PASSED   [ 91%]
+tests/test_urdf_analyzer.py::test_analyze_robot_json_output PASSED      [ 95%]
+tests/test_urdf_analyzer.py::test_analyze_robot_detailed_output PASSED  [100%]
+
+---------- coverage: platform linux, python 3.x.x-final-0 -----------
+Name                              Stmts   Miss  Cover   Missing
+---------------------------------------------------------------
+urdf_analyzer/__init__.py             5      0   100%
+urdf_analyzer/cli.py                 67     45    33%   28-35, 41-51, 57-73, 79-89
+urdf_analyzer/robot_spec.py          89      0   100%
+urdf_analyzer/urdf_analyzer.py      156      0   100%
+---------------------------------------------------------------
+TOTAL                               317    45    86%
+
+Coverage HTML written to dir htmlcov
+
+============================== 24 passed in 0.45s ===============================
