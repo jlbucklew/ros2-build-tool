@@ -1,0 +1,72 @@
+[
+  {
+    "timestamp": "2025-09-30T13:14:58.447264",
+    "task_id": "main",
+    "level": "INFO",
+    "message": "System starting...",
+    "data": {}
+  },
+  {
+    "timestamp": "2025-09-30T13:14:58.447264",
+    "task_id": "main",
+    "level": "INFO",
+    "message": "Running pre-flight checks...",
+    "data": {}
+  },
+  {
+    "timestamp": "2025-09-30T13:14:58.448268",
+    "task_id": "main",
+    "level": "ERROR",
+    "message": "API key not found",
+    "data": {}
+  },
+  {
+    "timestamp": "2025-09-30T13:14:58.551801",
+    "task_id": "main",
+    "level": "SUCCESS",
+    "message": "Git repository check passed",
+    "data": {}
+  },
+  {
+    "timestamp": "2025-09-30T13:14:58.648094",
+    "task_id": "main",
+    "level": "INFO",
+    "message": "Current branch: main",
+    "data": {}
+  },
+  {
+    "timestamp": "2025-09-30T13:14:58.648094",
+    "task_id": "main",
+    "level": "SUCCESS",
+    "message": "On main branch",
+    "data": {}
+  },
+  {
+    "timestamp": "2025-09-30T13:14:58.759566",
+    "task_id": "main",
+    "level": "WARNING",
+    "message": "Working directory not clean",
+    "data": {}
+  },
+  {
+    "timestamp": "2025-09-30T13:14:58.759566",
+    "task_id": "main",
+    "level": "SUCCESS",
+    "message": "Python version: 3.12.7",
+    "data": {}
+  },
+  {
+    "timestamp": "2025-09-30T13:14:58.760566",
+    "task_id": "main",
+    "level": "ERROR",
+    "message": "Pre-flight checks failed",
+    "data": {}
+  },
+  {
+    "timestamp": "2025-09-30T13:14:58.760566",
+    "task_id": "main",
+    "level": "ERROR",
+    "message": "System aborted due to pre-flight check failures",
+    "data": {}
+  }
+]
