@@ -7,7 +7,15 @@
       "Bash(git stash:*)",
       "Bash(git checkout:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(python -m pytest --collect-only -q)",
+      "Bash(python -m pytest tests/unit/test_robot_spec_parser.py -v)",
+      "Bash(pip install:*)",
+      "Bash(python -m pytest tests/unit/test_robot_spec_parser.py -v --no-cov)",
+      "Bash(python -m pytest tests/unit/test_urdf_analyzer.py -v --no-cov)",
+      "Bash(python -m pytest tests/unit/test_urdf_analyzer.py::TestURDFAnalyzer::test_xacro_support -v --no-cov)",
+      "Bash(python -m pytest tests/ -v --no-cov)",
+      "Bash(python -m pytest tests/ --cov=src/ros2_build_tool --cov-report=term-missing)"
     ],
     "deny": [],
     "ask": []
