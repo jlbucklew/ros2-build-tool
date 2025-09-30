@@ -15,7 +15,14 @@
       "Bash(python -m pytest tests/unit/test_urdf_analyzer.py -v --no-cov)",
       "Bash(python -m pytest tests/unit/test_urdf_analyzer.py::TestURDFAnalyzer::test_xacro_support -v --no-cov)",
       "Bash(python -m pytest tests/ -v --no-cov)",
-      "Bash(python -m pytest tests/ --cov=src/ros2_build_tool --cov-report=term-missing)"
+      "Bash(python -m pytest tests/ --cov=src/ros2_build_tool --cov-report=term-missing)",
+      "Bash(python -m pytest tests/ --collect-only -q)",
+      "Bash(git log:*)",
+      "Bash(dir:*)",
+      "Bash(test:*)",
+      "Bash(git rm:*)",
+      "Bash(ros2-build-tool:*)",
+      "Bash(rbt:*)"
     ],
     "deny": [],
     "ask": []

@@ -60,13 +60,26 @@ class RobotSpec(BaseModel):
     max_velocity: Optional[Velocity] = Field(None, description="Velocity limits")
 
     @field_validator('dimensions', mode='before')
-    def validate_dimensions(cls, v):
-        """Validate that dimensions are positive."""
+    def validate_dimensions(cls, v: Any) -> Any:
+        """Validate that dimensions are positive.
+
+        Args:
+            v: Value to validate
+
+        Returns:
+            Validated value
+
+        Raises:
+            ValueError: If dimensions are not positive
+        """
         if isinstance(v, dict):
             for key, value in v.items():
                 if key in ['length', 'width', 'height', 'wheel_radius', 'wheel_separation']:
                     if value is not None and value <= 0:
-                        raise ValueError(f"Dimensions must be positive, got {key}={value}")
+                        raise ValueError(
+                            f"Dimension '{key}' must be positive, got {value}. "
+                            f"All robot dimensions must be greater than zero."
+                        )
         return v
 
     @classmethod
@@ -83,22 +96,30 @@ class RobotSpec(BaseModel):
             ValueError: If required fields are missing or invalid
         """
         if 'type' not in data:
-            raise ValueError("type is required")
+            available_types = [t.value for t in RobotType]
+            raise ValueError(
+                f"Required field 'type' is missing. "
+                f"Must be one of: {', '.join(available_types)}"
+            )
 
         # Convert string type to enum if needed
         if isinstance(data.get('type'), str):
+            type_str = data['type']
             try:
-                data['type'] = RobotType(data['type'])
+                data['type'] = RobotType(type_str)
             except ValueError:
                 # Try uppercase conversion
-                data['type'] = RobotType(data['type'].upper())
+                try:
+                    data['type'] = RobotType(type_str.upper())
+                except ValueError:
+                    available_types = [t.value for t in RobotType]
+                    raise ValueError(
+                        f"Invalid robot type: '{type_str}'. "
+                        f"Must be one of: {', '.join(available_types)}"
+                    )
 
-        # Validate dimensions explicitly for negative values
-        if 'dimensions' in data:
-            dims = data['dimensions']
-            for key in ['length', 'width', 'height']:
-                if key in dims and dims[key] <= 0:
-                    raise ValueError("Dimensions must be positive")
+        # Pydantic will handle dimension validation via field_validator
+        # No need for redundant validation here
 
         return cls(**data)
 
@@ -111,9 +132,24 @@ class RobotSpec(BaseModel):
 
         Returns:
             RobotSpec instance
+
+        Raises:
+            FileNotFoundError: If file does not exist
+            PermissionError: If file cannot be read
+            yaml.YAMLError: If YAML parsing fails
         """
-        with open(file_path, 'r') as f:
-            data = yaml.safe_load(f)
+        try:
+            with open(file_path, 'r') as f:
+                data = yaml.safe_load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Robot spec file not found: {file_path}")
+        except PermissionError:
+            raise PermissionError(f"Permission denied reading file: {file_path}")
+        except yaml.YAMLError as e:
+            raise ValueError(f"Invalid YAML in file {file_path}: {e}")
+        except Exception as e:
+            raise IOError(f"Error reading file {file_path}: {e}")
+
         return cls.from_dict(data)
 
     def to_yaml(self, file_path: Path) -> None:
@@ -121,6 +157,10 @@ class RobotSpec(BaseModel):
 
         Args:
             file_path: Path to save YAML file
+
+        Raises:
+            PermissionError: If file cannot be written
+            IOError: If writing fails
         """
         # Convert to dict with enum values as strings
         data = self.model_dump()
@@ -131,8 +171,13 @@ class RobotSpec(BaseModel):
             if isinstance(sensor.get('type'), Enum):
                 sensor['type'] = sensor['type'].value
 
-        with open(file_path, 'w') as f:
-            yaml.dump(data, f, default_flow_style=False)
+        try:
+            with open(file_path, 'w') as f:
+                yaml.safe_dump(data, f, default_flow_style=False)
+        except PermissionError:
+            raise PermissionError(f"Permission denied writing to file: {file_path}")
+        except Exception as e:
+            raise IOError(f"Error writing to file {file_path}: {e}")
 
     def compute_robot_radius(self) -> float:
         """Compute robot radius from dimensions.

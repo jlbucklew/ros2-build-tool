@@ -1,3 +1,0 @@
-[console_scripts]
-rbt = ros2_build_tool.cli:main
-ros2-build-tool = ros2_build_tool.cli:main

@@ -146,9 +146,22 @@ class URDFAnalyzer:
 
         Returns:
             URDFAnalyzer instance
+
+        Raises:
+            FileNotFoundError: If file does not exist
+            PermissionError: If file cannot be read
+            IOError: If reading fails
         """
-        with open(file_path, 'r') as f:
-            content = f.read()
+        try:
+            with open(file_path, 'r') as f:
+                content = f.read()
+        except FileNotFoundError:
+            raise FileNotFoundError(f"URDF file not found: {file_path}")
+        except PermissionError:
+            raise PermissionError(f"Permission denied reading file: {file_path}")
+        except Exception as e:
+            raise IOError(f"Error reading URDF file {file_path}: {e}")
+
         return cls.from_string(content)
 
     @classmethod
@@ -160,30 +173,69 @@ class URDFAnalyzer:
 
         Returns:
             URDFAnalyzer instance
+
+        Raises:
+            FileNotFoundError: If xacro file does not exist
+            ValueError: If xacro file path is invalid
+            subprocess.TimeoutExpired: If xacro processing times out
         """
+        import os
+
+        # Validate file path to prevent command injection
+        if not isinstance(xacro_file, Path):
+            xacro_file = Path(xacro_file)
+
+        # Ensure file exists and is a regular file
+        if not xacro_file.exists():
+            raise FileNotFoundError(f"Xacro file not found: {xacro_file}")
+
+        if not xacro_file.is_file():
+            raise ValueError(f"Path is not a file: {xacro_file}")
+
+        # Resolve to absolute path to prevent path traversal attacks
+        xacro_file = xacro_file.resolve()
+
         # Process xacro file using xacro command
         try:
-            # Try to use ROS2 xacro command
+            # Try to use ROS2 xacro command with timeout
             result = subprocess.run(
                 ['xacro', str(xacro_file)],
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
+                timeout=30  # 30 second timeout to prevent hanging
             )
             urdf_content = result.stdout
+        except subprocess.TimeoutExpired:
+            raise subprocess.TimeoutExpired(
+                cmd=['xacro', str(xacro_file)],
+                timeout=30,
+                output="Xacro processing timed out after 30 seconds"
+            )
         except (subprocess.CalledProcessError, FileNotFoundError):
             # Fallback to simple XML parsing if xacro not available
-            # For testing purposes, just parse as regular XML
-            with open(xacro_file, 'r') as f:
-                content = f.read()
+            # NOTE: This fallback does NOT support xacro properties/macros properly
+            # and should only be used for testing purposes
+            try:
+                with open(xacro_file, 'r') as f:
+                    content = f.read()
+            except Exception as e:
+                raise IOError(f"Error reading xacro file {xacro_file}: {e}")
+
             # Remove xacro namespace and properties for simple parsing
             content = content.replace('xmlns:xacro="http://www.ros.org/wiki/xacro"', '')
             # Remove xacro:property tags
             import re
             content = re.sub(r'<xacro:property[^>]*>', '', content)
             content = re.sub(r'</xacro:property>', '', content)
-            # Replace property references
-            content = content.replace('${width}', '0.3')  # Replace properties with defaults
+
+            # Check for unresolved xacro properties and raise error
+            if '${' in content:
+                raise ValueError(
+                    f"Xacro file contains unresolved properties (e.g., ${'{...}'}). "
+                    f"Please install xacro tool or provide a fully resolved URDF file."
+                )
+
             urdf_content = content
 
         return cls.from_string(urdf_content)
@@ -316,6 +368,8 @@ class URDFAnalyzer:
     def get_transform(self, from_frame: str, to_frame: str) -> Optional[Transform]:
         """Get transform between two frames.
 
+        Computes the full transform chain using graph traversal.
+
         Args:
             from_frame: Source frame name
             to_frame: Target frame name
@@ -326,14 +380,129 @@ class URDFAnalyzer:
         if from_frame == to_frame:
             return Transform(translation=(0, 0, 0), rotation=(0, 0, 0))
 
+        # Check if frames exist
+        if from_frame not in self.links or to_frame not in self.links:
+            return None
+
         # Simple case: direct parent-child relationship
         for joint in self.joints.values():
             if joint.parent == from_frame and joint.child == to_frame:
                 return joint.origin or Transform(translation=(0, 0, 0), rotation=(0, 0, 0))
 
-        # More complex: need to compute transform chain
-        # For now, return None for non-direct relationships
+        # Complex case: compute transform chain using BFS
+        path = self._find_frame_path(from_frame, to_frame)
+
+        if path is None:
+            return None
+
+        # Compute composed transform along the path
+        return self._compose_transforms_along_path(path)
+
+    def _find_frame_path(self, from_frame: str, to_frame: str) -> Optional[List[str]]:
+        """Find path between two frames using BFS.
+
+        Args:
+            from_frame: Source frame name
+            to_frame: Target frame name
+
+        Returns:
+            List of frame names representing the path, or None if no path exists
+        """
+        from collections import deque
+
+        # Build bidirectional graph
+        graph: Dict[str, List[Tuple[str, bool]]] = {}
+        for joint in self.joints.values():
+            if joint.parent not in graph:
+                graph[joint.parent] = []
+            if joint.child not in graph:
+                graph[joint.child] = []
+            graph[joint.parent].append((joint.child, False))  # False = forward
+            graph[joint.child].append((joint.parent, True))    # True = reverse
+
+        # BFS to find path
+        queue: deque = deque([(from_frame, [from_frame])])
+        visited = {from_frame}
+
+        while queue:
+            current, path = queue.popleft()
+
+            if current == to_frame:
+                return path
+
+            for neighbor, _ in graph.get(current, []):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append((neighbor, path + [neighbor]))
+
         return None
+
+    def _compose_transforms_along_path(self, path: List[str]) -> Transform:
+        """Compose transforms along a path of frames.
+
+        Args:
+            path: List of frame names from source to target
+
+        Returns:
+            Composed transform
+        """
+        # Start with identity matrix
+        result_matrix = np.eye(4)
+
+        # Compose transforms along the path
+        for i in range(len(path) - 1):
+            parent = path[i]
+            child = path[i + 1]
+
+            # Find the joint connecting these frames
+            transform = None
+            forward = True
+
+            for joint in self.joints.values():
+                if joint.parent == parent and joint.child == child:
+                    transform = joint.origin or Transform(
+                        translation=(0, 0, 0),
+                        rotation=(0, 0, 0)
+                    )
+                    forward = True
+                    break
+                elif joint.parent == child and joint.child == parent:
+                    transform = joint.origin or Transform(
+                        translation=(0, 0, 0),
+                        rotation=(0, 0, 0)
+                    )
+                    forward = False
+                    break
+
+            if transform:
+                transform_matrix = transform.to_matrix()
+
+                if not forward:
+                    # Invert the transform for reverse direction
+                    transform_matrix = np.linalg.inv(transform_matrix)
+
+                # Compose with cumulative result
+                result_matrix = result_matrix @ transform_matrix
+
+        # Extract translation and rotation from result matrix
+        translation = tuple(result_matrix[:3, 3])
+
+        # Extract RPY from rotation matrix
+        r31 = result_matrix[2, 0]
+        pitch = np.arcsin(np.clip(-r31, -1.0, 1.0))
+
+        # Check for gimbal lock
+        if np.abs(np.cos(pitch)) > 1e-6:
+            roll = np.arctan2(result_matrix[2, 1], result_matrix[2, 2])
+            yaw = np.arctan2(result_matrix[1, 0], result_matrix[0, 0])
+        else:
+            # Gimbal lock case
+            roll = 0.0
+            yaw = np.arctan2(-result_matrix[0, 1], result_matrix[1, 1])
+
+        rotation = (roll, pitch, yaw)
+
+        return Transform(translation=translation, rotation=rotation)
 
     def validate_tf_tree(self) -> ValidationResult:
         """Validate TF tree structure.
