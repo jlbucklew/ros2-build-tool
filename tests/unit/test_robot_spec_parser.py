@@ -38,7 +38,7 @@ class TestRobotSpec:
             # Missing required fields
         }
 
-        with pytest.raises(ValueError, match="type is required"):
+        with pytest.raises(ValueError, match=r"Required field 'type' is missing"):
             RobotSpec.from_dict(invalid_spec)
 
     @pytest.mark.unit
@@ -54,7 +54,7 @@ class TestRobotSpec:
             }
         }
 
-        with pytest.raises(ValueError, match="Dimensions must be positive"):
+        with pytest.raises(ValueError, match=r"length.*must be positive"):
             RobotSpec.from_dict(invalid_spec)
 
     @pytest.mark.unit
